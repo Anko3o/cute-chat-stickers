@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sticker-shelf index.json",
+  "description": "One entry per sticker image in the same folder. Managed by sticker.py; safe to edit by hand (entries without an id get one on next load).",
+  "type": "object",
+  "required": ["stickers"],
+  "properties": {
+    "next_id": { "type": "integer", "minimum": 1, "description": "Next number to hand out. Numbers are never reused." },
+    "stickers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "file"],
+        "properties": {
+          "id": { "type": "integer", "minimum": 1, "description": "Stable number; [[sticker:12]] works too." },
+          "name": { "type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[^/\\\\.:\\[\\]<>\"'&]+$", "description": "Used in [[sticker:name]]." },
+          "file": { "type": "string", "pattern": "^[^/\\\\]+\\.(png|jpg|jpeg|gif|webp)$", "description": "Image file name inside the sticker folder." },
+          "desc": { "type": "string", "description": "One line that lets someone find it without seeing it." },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "aliases": { "type": "array", "items": { "type": "string" }, "description": "Old names; kept on rename so old messages still show the image." },
+          "owner": { "type": "string", "description": "Optional: who added it." }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

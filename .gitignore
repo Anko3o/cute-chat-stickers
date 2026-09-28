@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# your own library lives outside the repo (or add it to your fork on purpose)
+packages/stickers/stickers/*
+!packages/stickers/stickers/index.json
+!packages/stickers/stickers/sample-bow.webp
+kaomoji-sources.json
+*.tmp
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/
+node_modules/

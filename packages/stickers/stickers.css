@@ -1,0 +1,6 @@
+/* chat-stickers · stickers.css — stickers inside messages. Uses theme.css; the drawer itself is core/drawer.css. */
+.st-inline{ display: inline-block; width: 96px; height: 96px; object-fit: contain; vertical-align: bottom; margin: 2px 0; }
+/* a message that is only one sticker: the bubble steps aside, the picture stands on its own */
+.st-only{ background: transparent !important; border-color: transparent !important; box-shadow: none !important; padding: 0 !important; }
+.st-only .st-inline{ width: 128px; height: 128px; margin: 0; }
+.cd-stickers .cd-cell img{ filter: drop-shadow(0 1px 2px rgba(0,0,0,.06)); }

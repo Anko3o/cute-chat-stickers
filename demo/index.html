@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>chat-stickers demo</title>
+<link rel="stylesheet" href="../dist/chat-stickers.css">
+<style>
+  *{ box-sizing: border-box; }
+  html, body{ height: 100%; margin: 0; }
+  body{
+    background: var(--cs-floor); color: var(--cs-ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif;
+  }
+  .app{ position: relative; z-index: 1; height: 100%; height: 100dvh; display: flex; flex-direction: column; max-width: 760px; margin: 0 auto; }
+  header{ display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--cs-line); background: color-mix(in srgb, var(--cs-paper) 72%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  header h1{ margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .02em; flex: 1; }
+  header .who{ font-size: 12px; color: var(--cs-soft); }
+  header a{ color: var(--cs-accent); text-decoration: none; }
+  .hint{ margin: 10px auto 2px; padding: 4px 12px; width: fit-content; border-radius: 999px; background: var(--cs-chip); color: var(--cs-soft); font-size: 12px; }
+  #messages{
+    flex: 1; overflow-y: auto; padding: 12px 16px 24px; display: flex; flex-direction: column; gap: 14px;
+    user-select: none; -webkit-user-select: none; overscroll-behavior: contain;
+  }
+  .row{ display: flex; }
+  .row.me{ justify-content: flex-end; }
+  .bubble{
+    position: relative; max-width: 74%; padding: 9px 13px; border-radius: 18px;
+    background: var(--cs-paper); border: 1px solid var(--cs-line); word-break: break-word;
+  }
+  .row.me .bubble{ background: color-mix(in srgb, var(--cs-accent) 16%, var(--cs-paper)); border-color: transparent; }
+  .row.them .bubble{ border-bottom-left-radius: 6px; }
+  .row.me .bubble{ border-bottom-right-radius: 6px; }
+  .photo-wrap{ position: relative; }
+  .photo{ display: block; width: 190px; height: 140px; border-radius: 16px; border: 1px solid var(--cs-line); object-fit: cover; }
+  .composer{ display: flex; align-items: center; gap: 4px; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--cs-line); background: color-mix(in srgb, var(--cs-paper) 80%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  .composer input{ flex: 1; min-width: 0; height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--cs-line); background: var(--cs-paper); color: var(--cs-ink); font: inherit; outline: none; }
+  .composer input:focus{ border-color: var(--cs-accent); }
+  .send{ color: var(--cs-accent) !important; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header>
+    <h1>chat-stickers</h1>
+    <span class="who" id="who"></span>
+  </header>
+  <div id="messages" aria-live="polite"></div>
+  <form class="composer" id="composer" autocomplete="off">
+    <button type="button" class="cs-entry" id="stickerBtn" aria-label="表情包 / Stickers" title="表情包 / Stickers">
+      <!-- lucide: sticker -->
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/><path d="M8 13h.01M16 13h.01"/><path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1"/></svg>
+    </button>
+    <button type="button" class="cs-entry" id="kaomojiBtn" aria-label="颜文字 / Kaomoji" title="颜文字 / Kaomoji">
+      <!-- a face made of brackets: ( ˙ᵕ˙ ) as line art -->
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4.5C3.8 6.4 3 9 3 12s.8 5.6 3 7.5"/><path d="M18 4.5c2.2 1.9 3 4.5 3 7.5s-.8 5.6-3 7.5"/><path d="M8.6 10.2h.01M15.4 10.2h.01"/><path d="M10 14.2c1.2 1 2.8 1 4 0"/></svg>
+    </button>
+    <input id="input" placeholder="说点什么… / Say something…" enterkeyhint="send">
+    <button type="submit" class="cs-entry send" aria-label="发送 / Send" title="发送 / Send">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+    </button>
+  </form>
+</div>
+
+<script src="../dist/chat-stickers.js"></script>
+<script>
+/* A fake chat between A and B. Open ?me=a in one tab and ?me=b in another — they sync through
+   BroadcastChannel + localStorage, standing in for your server. ?theme=dark forces dark mode. ?reset clears it. */
+(function () {
+  var qs = new URLSearchParams(location.search);
+  if (qs.has("reset")) { Object.keys(localStorage).forEach(function (k) { if (/^(demo_|sticker_shelf|kaomoji_|emoji_bg)/.test(k)) localStorage.removeItem(k); }); }
+  if (qs.get("theme")) document.documentElement.dataset.csTheme = qs.get("theme");
+  var lang = qs.get("lang") || (/^zh/i.test(navigator.language) ? "zh" : "en");
+  var ME = qs.get("me") === "b" ? "b" : "a", OTHER = ME === "a" ? "b" : "a";
+  var PEOPLE = { a: { id: "a", name: "A", emoji: "🐰" }, b: { id: "b", name: "B", emoji: "🦊" } };
+  var chan = "BroadcastChannel" in window ? new BroadcastChannel("chat-stickers-demo") : null;
+  function get(k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (_) { return d; } }
+  function put(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }
+  function ping(type, extra) { if (chan) chan.postMessage(Object.assign({ type: type }, extra || {})); }
+  var listeners = [];
+  if (chan) chan.onmessage = function (e) { listeners.forEach(function (fn) { fn(e.data); }); };
+
+  document.getElementById("who").innerHTML = lang === "zh"
+    ? "你是 <b>" + ME.toUpperCase() + "</b> · 另开一个标签页 <a href='?me=" + OTHER + "' target='_blank'>?me=" + OTHER + "</a> 当另一个人"
+    : "You are <b>" + ME.toUpperCase() + "</b> · open <a href='?me=" + OTHER + "' target='_blank'>?me=" + OTHER + "</a> in another tab";
+
+  var PHOTO = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 190 140"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbd9e4"/><stop offset="1" stop-color="#fff4e8"/></linearGradient></defs><rect width="190" height="140" fill="url(#g)"/><circle cx="142" cy="40" r="16" fill="#fff" opacity=".9"/><path d="M0 112 L52 70 L92 100 L128 76 L190 118 L190 140 L0 140Z" fill="#e8a9bf" opacity=".75"/><path d="M0 124 L70 96 L120 120 L190 104 L190 140 L0 140Z" fill="#c9829d" opacity=".7"/></svg>');
+  var SEED = lang === "zh" ? [
+    { id: "m1", from: "b", text: "今天的云好软" },
+    { id: "m2", from: "a", text: "长按我这条试试，能贴表情哦" },
+    { id: "m3", from: "b", img: PHOTO },
+    { id: "m4", from: "b", text: "长按空白处可以换背景上的 emoji" },
+    { id: "m5", from: "a", text: "[[sticker:蝴蝶结]]" },
+    { id: "m6", from: "a", text: "左下两颗按钮：表情包和颜文字 ૮₍ ˶ᵔ ᵕ ᵔ˶ ₎ა" },
+  ] : [
+    { id: "m1", from: "b", text: "The clouds are so soft today" },
+    { id: "m2", from: "a", text: "Long-press this one to react" },
+    { id: "m3", from: "b", img: PHOTO },
+    { id: "m4", from: "b", text: "Long-press any empty spot to change the background emoji" },
+    { id: "m5", from: "a", text: "[[sticker:蝴蝶结]]" },
+    { id: "m6", from: "a", text: "Two buttons by the input: stickers and kaomoji ૮₍ ˶ᵔ ᵕ ᵔ˶ ₎ა" },
+  ];
+  if (!get("demo_msgs", null)) put("demo_msgs", SEED);
+  if (!get("demo_rx", null)) put("demo_rx", { m1: { a: "❤️" }, m4: { a: "🫶" } });
+
+  var box = document.getElementById("messages");
+  var stickerStore = StickerPanel.localStore("../packages/stickers/stickers/index.json", "../packages/stickers/stickers/");
+  StickerRender.config({ src: function (name) { return stickerStore.resolve(name); } });
+
+  function render() {
+    var msgs = get("demo_msgs", []);
+    box.innerHTML = '<div class="hint">' + (lang === "zh" ? "长按：空白处＝背景 · 气泡＝贴表情 · 图片＝贴在图上" : "Long-press: empty space = background · bubble = react · image = react") + "</div>";
+    msgs.forEach(function (m) {
+      if (m.notice) { var n = EmojiBg.notice(m.notice); box.appendChild(n); return; }
+      var row = document.createElement("div");
+      row.className = "row " + (m.from === ME ? "me" : "them");
+      row.dataset.id = m.id;
+      if (m.img) {
+        var w = document.createElement("div"); w.className = "photo-wrap bubble-less" + (m.from === ME ? "" : " rx-left");
+        w.innerHTML = '<img class="photo" alt="" draggable="false" src="' + m.img + '">';
+        row.appendChild(w);
+      } else {
+        var b = document.createElement("div"); b.className = "bubble" + (m.from === ME ? "" : " rx-left");
+        StickerRender.into(b, m.text);
+        row.appendChild(b);
+      }
+      box.appendChild(row);
+    });
+    var rx = get("demo_rx", {});
+    Object.keys(rx).forEach(function (id) { chat.setReactions(id, rx[id]); });
+    box.scrollTop = box.scrollHeight;
+  }
+  function addMessage(m) { var l = get("demo_msgs", []); l.push(m); put("demo_msgs", l); render(); ping("msgs"); }
+
+  var lastMine = null;
+  var chat = ChatStickers.init({
+    container: box, lang: lang, me: PEOPLE[ME], others: [PEOPLE[OTHER]], media: "img.photo",
+    background: {
+      adapter: {
+        load: function () { return Promise.resolve(get("demo_bg", { a: { emoji: "🐰" }, b: { emoji: "🦊" } })); },
+        save: function (emoji) { var s = get("demo_bg", { a: { emoji: "🐰" }, b: { emoji: "🦊" } }); var prev = s[ME] && s[ME].emoji; s[ME] = { emoji: emoji }; put("demo_bg", s);
+          addMessage({ id: "n" + Date.now(), notice: { who: ME, emoji: emoji, prev: prev } }); ping("bg", { state: s, by: ME }); return Promise.resolve(s); },
+        subscribe: function (cb) { listeners.push(function (d) { if (d.type === "bg") cb(d.state, d.by); }); },
+      },
+    },
+    reactions: {
+      getId: function (el) { var r = el.closest("[data-id]"); return r && r.dataset.id; },
+      bubbleOf: function (id) { var r = box.querySelector('[data-id="' + id + '"]'); return r && (r.querySelector(".bubble") || r.querySelector(".photo-wrap")); },
+      store: {
+        react: function (id, value) { var rx = get("demo_rx", {}); rx[id] = rx[id] || {}; if (value) rx[id][ME] = value; else delete rx[id][ME]; put("demo_rx", rx); ping("rx", { id: id, map: rx[id] }); return Promise.resolve(rx[id]); },
+        subscribe: function (cb) { listeners.push(function (d) { if (d.type === "rx") cb(d.id, d.map); }); },
+      },
+    },
+    onMedia: function (img) { Reactions.open(img.closest(".photo-wrap")); },
+    stickers: { button: "#stickerBtn", anchor: "#composer", input: "#input", store: stickerStore,
+      send: function (text) { addMessage({ id: "m" + Date.now(), from: ME, text: text }); } },
+    kaomoji: { button: "#kaomojiBtn", anchor: "#composer", input: "#input", seedUrl: "../packages/kaomoji/kaomoji.json" },
+  });
+  listeners.push(function (d) { if (d.type === "msgs") render(); });
+
+  document.getElementById("composer").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var input = document.getElementById("input"), t = input.value.trim();
+    if (!t) return;
+    input.value = "";
+    addMessage({ id: "m" + Date.now(), from: ME, text: t });
+  });
+
+  stickerStore._all().then(render);
+})();
+</script>
+</body>
+</html>

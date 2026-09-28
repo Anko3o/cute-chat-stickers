@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cute-chat-stickers · 长按哪里，就贴在哪里</title>
+<meta name="description" content="给聊天页加三样「贴」：聊天背景 emoji、长按给气泡贴表情、自己的表情包库和颜文字抽屉。零依赖，一个脚本接上就能用。">
+<!-- Replace https://Anko3o.github.io/cute-chat-stickers/ below once the repo name is decided. -->
+<link rel="canonical" href="https://Anko3o.github.io/cute-chat-stickers/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="cute-chat-stickers">
+<meta property="og:title" content="cute-chat-stickers · 长按哪里，就贴在哪里">
+<meta property="og:description" content="聊天背景 emoji · 气泡贴表情 · 自己的表情包库 —— 一个脚本接上就能用。Long-press where you want it to stick.">
+<meta property="og:url" content="https://Anko3o.github.io/cute-chat-stickers/">
+<meta property="og:image" content="https://Anko3o.github.io/cute-chat-stickers/og.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="长按哪里，就贴在哪里 — cute-chat-stickers">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="cute-chat-stickers · 长按哪里，就贴在哪里">
+<meta name="twitter:description" content="聊天背景 emoji · 气泡贴表情 · 自己的表情包库 —— 一个脚本接上就能用。">
+<meta name="twitter:image" content="https://Anko3o.github.io/cute-chat-stickers/og.png">
+<meta name="twitter:image:alt" content="长按哪里，就贴在哪里 — cute-chat-stickers">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b0607f' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z'/%3E%3Cpath d='M15 3v4a2 2 0 0 0 2 2h4'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --ink: #3f2f37; --soft: #7b6571; --faint: #a08c96; --line: rgba(176, 96, 127, .26);
+    --bg: #fbf1f4; --paper: #fffdfd; --accent: #b0607f; --accent-ink: #fffafd; --code: #f6e9ee;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){ --ink: #f1e6eb; --soft: #c2afb8; --faint: #8f7c86; --line: rgba(231, 162, 191, .22); --bg: #1b1619; --paper: #231d21; --accent: #e7a2bf; --accent-ink: #231d21; --code: #2c2429; }
+  }
+  :root[data-theme="dark"]{ --ink: #f1e6eb; --soft: #c2afb8; --faint: #8f7c86; --line: rgba(231, 162, 191, .22); --bg: #1b1619; --paper: #231d21; --accent: #e7a2bf; --accent-ink: #231d21; --code: #2c2429; }
+  *{ box-sizing: border-box; }
+  body{ margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.75 -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif; }
+  main{ max-width: 980px; margin: 0 auto; padding: 56px 16px 72px; }
+  .kicker{ margin: 0; font-size: 13px; letter-spacing: .28em; color: var(--accent); }
+  h1{ margin: 12px 0 0; font-size: clamp(34px, 7vw, 58px); line-height: 1.18; letter-spacing: .03em; }
+  .lede{ margin: 18px 0 0; max-width: 40em; font-size: 18px; color: var(--soft); }
+  .en{ margin: 6px 0 0; font-size: 15px; color: var(--faint); }
+  .cta{ display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+  .btn{ display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: 15px; background: var(--paper); }
+  .btn.primary{ background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+  .btn svg{ width: 18px; height: 18px; }
+  .shots{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 48px 0 0; }
+  figure{ margin: 0; }
+  figure img{ display: block; width: 100%; border-radius: 18px; border: 1px solid var(--line); background: var(--paper); }
+  figcaption{ margin-top: 10px; font-size: 14px; color: var(--soft); text-align: center; }
+  h2{ margin: 64px 0 16px; font-size: 22px; letter-spacing: .06em; }
+  .steps{ list-style: none; padding: 0; margin: 0; display: grid; gap: 16px; counter-reset: s; }
+  .steps li{ counter-increment: s; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .steps li::before{ content: counter(s); width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid var(--accent); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .steps p{ margin: 2px 0 8px; }
+  pre{ margin: 0; padding: 14px 16px; border-radius: 14px; background: var(--code); border: 1px solid var(--line); overflow-x: auto; font: 13.5px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  table{ width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td{ text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th{ font-weight: 500; color: var(--soft); font-size: 13px; letter-spacing: .08em; }
+  .table-wrap{ overflow-x: auto; }
+  footer{ margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 13px; color: var(--faint); }
+  footer a{ color: var(--soft); }
+  @media (max-width: 720px){ .shots{ grid-template-columns: repeat(2, minmax(0, 1fr)); } main{ padding-top: 36px; } }
+</style>
+</head>
+<body>
+<main>
+  <p class="kicker">给聊天页的三样「贴」</p>
+  <h1>长按哪里，就贴在哪里</h1>
+  <p class="lede">按在空白处，贴到聊天背景上；按在气泡上，贴到那条消息上；按在图片上，贴到那张图上。再加上你自己的表情包库和一个颜文字小抽屉。零依赖，一个脚本接上就能用。</p>
+  <p class="en">Long-press where you want it to stick — the background, a bubble, or a picture. Plus your own sticker shelf and a kaomoji drawer. Zero dependencies.</p>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/Anko3o/cute-chat-stickers">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65S8.93 17.38 9 18v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+      GitHub
+    </a>
+    <a class="btn" href="https://github.com/Anko3o/cute-chat-stickers/tree/main/demo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+      Demo
+    </a>
+  </div>
+
+  <div class="shots">
+    <figure><img src="shot-background.png" alt="长按空白处，两人各选一枚 emoji 撒满聊天背景" loading="lazy"><figcaption>长按空白 → 背景</figcaption></figure>
+    <figure><img src="shot-reactions.png" alt="长按气泡，两行四格贴表情" loading="lazy"><figcaption>长按气泡 → 贴表情</figcaption></figure>
+    <figure><img src="shot-stickers.png" alt="自己的表情包库" loading="lazy"><figcaption>表情包抽屉</figcaption></figure>
+    <figure><img src="shot-kaomoji.png" alt="颜文字小抽屉" loading="lazy"><figcaption>颜文字抽屉</figcaption></figure>
+  </div>
+
+  <h2>三步接入</h2>
+  <ol class="steps">
+    <li><div><p>引进来</p>
+<pre>&lt;link rel="stylesheet" href="dist/chat-stickers.css"&gt;
+&lt;script src="dist/chat-stickers.js"&gt;&lt;/script&gt;</pre></div></li>
+    <li><div><p>消息列表每行带 <code>data-id</code>，气泡是 <code>.bubble</code>；输入框旁放两颗按钮</p>
+<pre>&lt;div id="messages"&gt;
+  &lt;div class="row" data-id="m1"&gt;&lt;div class="bubble"&gt;…&lt;/div&gt;&lt;/div&gt;
+&lt;/div&gt;</pre></div></li>
+    <li><div><p>初始化，接上参考后端（<code>server/</code>）</p>
+<pre>ChatStickers.init({
+  container: "#messages",
+  me: { id: "a", name: "A", emoji: "🐰" }, others: [{ id: "b", name: "B", emoji: "🦊" }],
+  api: "/chat-stickers",
+  stickers: { button: "#stickerBtn", input: "#input", send: (t) =&gt; sendMessage(t) },
+  kaomoji:  { button: "#kaomojiBtn", input: "#input" },
+});</pre></div></li>
+  </ol>
+
+  <h2>长按三分法</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>按在</th><th>打开</th><th>贴到</th></tr></thead>
+    <tbody>
+      <tr><td>列表空白处</td><td>聊天背景面板：两人各选一枚 emoji</td><td>聊天背景（两边同步）</td></tr>
+      <tr><td>文字气泡</td><td>两行四格，＋ 打开表情包</td><td>那条消息的角上</td></tr>
+      <tr><td>图片</td><td>同一个格子</td><td>那张图的角上</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>还有</h2>
+  <div class="table-wrap"><table>
+    <tbody>
+      <tr><td>表情包库</td><td>CLI 和最小服务；稳定编号；改名字时旧名进 <code>aliases</code>，历史消息不断图；顶栏 ＝ 搜索 ＋ 添加 ＋ 更多</td></tr>
+      <tr><td>颜文字</td><td>九组内置；支持粘贴任意颜文字网页导入、同步只端新的</td></tr>
+      <tr><td>样式</td><td>一套 <code>--cs-*</code> 变量，浅色深色都有；图标全是细线 SVG</td></tr>
+    </tbody>
+  </table></div>
+
+  <footer>MIT· 聊天背景的玩法参考了小红书 2026-09 的聊天背景功能 · <a href="https://github.com/Anko3o/cute-chat-stickers">source</a></footer>
+</main>
+</body>
+</html>

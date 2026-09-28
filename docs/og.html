@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>cute-chat-stickers social card (1280×640) — screenshot this page to make og.png</title>
+<style>
+  *{ box-sizing: border-box; }
+  html, body{ margin: 0; }
+  body{
+    width: 1280px; height: 640px; overflow: hidden; position: relative;
+    background: #fbf1f4;
+    font-family: "PingFang SC", "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif;
+    color: #4a3a42;
+  }
+  /* fine-line frame */
+  .frame{ position: absolute; inset: 22px; border: 1px solid rgba(176, 96, 127, .28); border-radius: 26px; }
+  /* left: collage of real screenshots */
+  .collage{ position: absolute; left: 70px; top: 58px; width: 520px; height: 524px; }
+  .shot{
+    position: absolute; width: 236px; border-radius: 22px; overflow: hidden; background: #fff;
+    border: 1px solid rgba(176, 96, 127, .28); box-shadow: 0 18px 40px rgba(150, 86, 120, .16);
+  }
+  .shot img{ display: block; width: 100%; }
+  .s1{ left: 0; top: 34px; transform: rotate(-4deg); }
+  .s2{ left: 142px; top: 0; z-index: 2; }
+  .s3{ left: 284px; top: 40px; transform: rotate(4deg); }
+  /* right: words */
+  .words{ position: absolute; left: 660px; right: 70px; top: 128px; }
+  .kicker{ font-size: 18px; letter-spacing: .28em; color: #b0607f; font-weight: 500; }
+  h1{ margin: 18px 0 0; font-size: 62px; line-height: 1.18; font-weight: 700; letter-spacing: .04em; color: #3f2f37; }
+  .sub{ margin: 24px 0 0; font-size: 21px; line-height: 1.7; color: #7b6571; }
+  .en{ margin: 10px 0 0; font-size: 16px; letter-spacing: .02em; color: #a08c96; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  /* five small dots */
+  .steps{ position: absolute; left: 660px; right: 70px; bottom: 76px; display: flex; align-items: flex-start; }
+  .step{ flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; position: relative; font-size: 14px; color: #8a7480; }
+  .step::before{ content: ""; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid #b0607f; background: #fbf1f4; position: relative; z-index: 1; }
+  .step.on::before{ background: #b0607f; }
+  .step:not(:last-child)::after{ content: ""; position: absolute; left: 14px; right: 4px; top: 6px; height: 1px; background: rgba(176, 96, 127, .35); }
+  .mark{ position: absolute; right: 70px; top: 64px; font-size: 15px; letter-spacing: .08em; color: #b0607f; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+</style>
+</head>
+<body>
+  <div class="frame"></div>
+  <div class="mark">cute-chat-stickers</div>
+  <div class="collage">
+    <div class="shot s1"><img src="shot-background.png" alt=""></div>
+    <div class="shot s2"><img src="shot-reactions.png" alt=""></div>
+    <div class="shot s3"><img src="shot-stickers.png" alt=""></div>
+  </div>
+  <div class="words">
+    <div class="kicker">给聊天页的三样「贴」</div>
+    <h1>长按哪里，<br>就贴在哪里</h1>
+    <p class="sub">聊天背景 emoji · 气泡贴表情 · 自己的表情包库<br>—— 一个脚本接上就能用</p>
+    <p class="en">Long-press where you want it to stick: background, bubble, or your own sticker shelf.</p>
+  </div>
+  <div class="steps">
+    <div class="step on">引一个脚本</div>
+    <div class="step on">长按空白</div>
+    <div class="step on">长按气泡</div>
+    <div class="step on">表情包</div>
+    <div class="step on">颜文字</div>
+  </div>
+</body>
+</html>

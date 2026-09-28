@@ -1,0 +1,40 @@
+/* chat-stickers · theme.css — one set of design variables for every drawer, sheet and chip.
+   Override them on :root (or any ancestor) to match your chat. Light by default; dark follows the system,
+   or force it with <html data-cs-theme="dark"> / "light". */
+:root{
+  --cs-font: inherit;
+  --cs-ink: #4a3a42;
+  --cs-soft: #8a7480;
+  --cs-line: rgba(120, 90, 105, .22);
+  --cs-paper: #fffdfd;
+  --cs-floor: #fbf6f8;
+  --cs-accent: #b0607f;
+  --cs-accent-ink: #fffafd;
+  --cs-chip: rgba(217, 163, 189, .22);
+  --cs-press: rgba(217, 163, 189, .18);
+  --cs-danger: #c9564b;
+  --cs-scrim: rgba(40, 28, 34, .18);
+  --cs-shadow: 0 14px 34px rgba(120, 70, 95, .18);
+  --cs-radius: 16px;
+  --cs-radius-sm: 12px;
+  --cs-stroke: 1.8;
+  --cs-ease: cubic-bezier(.22, .8, .24, 1);
+  --cs-emoji-font: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-cs-theme="light"]){
+    --cs-ink: #eee3e8; --cs-soft: #b3a1aa; --cs-line: rgba(255,255,255,.14);
+    --cs-paper: #231d21; --cs-floor: #1b1619; --cs-accent: #e7a2bf; --cs-accent-ink: #231d21;
+    --cs-chip: rgba(231,162,191,.16); --cs-press: rgba(231,162,191,.12); --cs-danger: #ef8b80;
+    --cs-scrim: rgba(0,0,0,.42); --cs-shadow: 0 14px 34px rgba(0,0,0,.4);
+  }
+}
+:root[data-cs-theme="dark"]{
+  --cs-ink: #eee3e8; --cs-soft: #b3a1aa; --cs-line: rgba(255,255,255,.14);
+  --cs-paper: #231d21; --cs-floor: #1b1619; --cs-accent: #e7a2bf; --cs-accent-ink: #231d21;
+  --cs-chip: rgba(231,162,191,.16); --cs-press: rgba(231,162,191,.12); --cs-danger: #ef8b80;
+  --cs-scrim: rgba(0,0,0,.42); --cs-shadow: 0 14px 34px rgba(0,0,0,.4);
+}
+
+/* long-press areas: no iOS callout bubble */
+.cs-press-area{ -webkit-touch-callout: none; }

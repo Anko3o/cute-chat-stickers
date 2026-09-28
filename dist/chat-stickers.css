@@ -1,0 +1,375 @@
+/*! chat-stickers — built from packages/ by build.sh. MIT (placeholder). */
+
+/* ---- packages/core/theme.css ---- */
+/* chat-stickers · theme.css — one set of design variables for every drawer, sheet and chip.
+   Override them on :root (or any ancestor) to match your chat. Light by default; dark follows the system,
+   or force it with <html data-cs-theme="dark"> / "light". */
+:root{
+  --cs-font: inherit;
+  --cs-ink: #4a3a42;
+  --cs-soft: #8a7480;
+  --cs-line: rgba(120, 90, 105, .22);
+  --cs-paper: #fffdfd;
+  --cs-floor: #fbf6f8;
+  --cs-accent: #b0607f;
+  --cs-accent-ink: #fffafd;
+  --cs-chip: rgba(217, 163, 189, .22);
+  --cs-press: rgba(217, 163, 189, .18);
+  --cs-danger: #c9564b;
+  --cs-scrim: rgba(40, 28, 34, .18);
+  --cs-shadow: 0 14px 34px rgba(120, 70, 95, .18);
+  --cs-radius: 16px;
+  --cs-radius-sm: 12px;
+  --cs-stroke: 1.8;
+  --cs-ease: cubic-bezier(.22, .8, .24, 1);
+  --cs-emoji-font: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-cs-theme="light"]){
+    --cs-ink: #eee3e8; --cs-soft: #b3a1aa; --cs-line: rgba(255,255,255,.14);
+    --cs-paper: #231d21; --cs-floor: #1b1619; --cs-accent: #e7a2bf; --cs-accent-ink: #231d21;
+    --cs-chip: rgba(231,162,191,.16); --cs-press: rgba(231,162,191,.12); --cs-danger: #ef8b80;
+    --cs-scrim: rgba(0,0,0,.42); --cs-shadow: 0 14px 34px rgba(0,0,0,.4);
+  }
+}
+:root[data-cs-theme="dark"]{
+  --cs-ink: #eee3e8; --cs-soft: #b3a1aa; --cs-line: rgba(255,255,255,.14);
+  --cs-paper: #231d21; --cs-floor: #1b1619; --cs-accent: #e7a2bf; --cs-accent-ink: #231d21;
+  --cs-chip: rgba(231,162,191,.16); --cs-press: rgba(231,162,191,.12); --cs-danger: #ef8b80;
+  --cs-scrim: rgba(0,0,0,.42); --cs-shadow: 0 14px 34px rgba(0,0,0,.4);
+}
+
+/* long-press areas: no iOS callout bubble */
+.cs-press-area{ -webkit-touch-callout: none; }
+
+/* ---- packages/core/drawer.css ---- */
+/* chat-stickers · drawer.css — the shared little drawer (stickers and kaomoji). Uses theme.css. */
+.cd-drawer{
+  position: fixed; z-index: 240; left: 10px; bottom: 80px; width: min(520px, calc(100vw - 20px));
+  max-height: min(56vh, 460px); display: flex; flex-direction: column; box-sizing: border-box;
+  padding: 8px; border-radius: var(--cs-radius);
+  background: var(--cs-paper); color: var(--cs-ink); font-family: var(--cs-font);
+  border: 1px solid var(--cs-line); box-shadow: var(--cs-shadow);
+  opacity: 0; transform: translateY(8px); transition: opacity .18s ease, transform .22s var(--cs-ease);
+}
+.cd-drawer[hidden]{ display: none; }
+.cd-drawer.open{ opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce){ .cd-drawer{ transition: none; } }
+.cd-drawer svg{ width: 20px; height: 20px; flex: none; }
+
+/* top bar: search + add + more  |  selection bar: name + edit + delete + cancel  |  view bar: back + title */
+.cd-bar, .cd-selbar, .cd-viewbar{ display: flex; align-items: center; gap: 4px; padding: 0 0 8px; min-height: 36px; }
+.cd-bar[hidden], .cd-selbar[hidden], .cd-viewbar[hidden]{ display: none; }
+.cd-search{
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px;
+  border-radius: 999px; background: var(--cs-floor); border: 1px solid var(--cs-line); color: var(--cs-soft);
+}
+.cd-search svg{ width: 16px; height: 16px; }
+.cd-search input{ flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--cs-ink); font: inherit; font-size: 14px; }
+.cd-ib{
+  appearance: none; -webkit-appearance: none; border: 0; background: none; padding: 0; flex: none;
+  width: 36px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--cs-soft); cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.cd-ib:hover, .cd-ib:active, .cd-ib[aria-expanded="true"]{ background: var(--cs-press); color: var(--cs-accent); }
+.cd-sel-t, .cd-view-t{ flex: 1; min-width: 0; padding: 0 6px; font-size: 13px; color: var(--cs-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-tb{
+  appearance: none; -webkit-appearance: none; border: 1px solid var(--cs-line); background: var(--cs-paper); flex: none;
+  height: 32px; padding: 0 12px 0 9px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px;
+  color: var(--cs-ink); font: inherit; font-size: 13px; cursor: pointer;
+}
+.cd-tb svg{ width: 16px; height: 16px; }
+.cd-tb:disabled{ opacity: .4; cursor: default; }
+.cd-tb.cd-danger{ color: var(--cs-danger); }
+
+/* "…" menu */
+.cd-menu{
+  position: absolute; right: 8px; top: 46px; z-index: 2; min-width: 190px; padding: 4px;
+  border-radius: var(--cs-radius-sm); background: var(--cs-paper); border: 1px solid var(--cs-line); box-shadow: var(--cs-shadow);
+  display: flex; flex-direction: column;
+}
+.cd-menu[hidden]{ display: none; }
+.cd-mi{
+  appearance: none; -webkit-appearance: none; border: 0; background: none; text-align: left;
+  padding: 9px 12px; border-radius: 9px; color: var(--cs-ink); font: inherit; font-size: 14px; cursor: pointer;
+}
+.cd-mi:hover, .cd-mi:active{ background: var(--cs-press); }
+
+/* body */
+.cd-body{ flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.cd-grid{ display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; padding: 2px; }
+.cd-grid[hidden], .cd-view[hidden]{ display: none; }
+.cd-cell{
+  appearance: none; -webkit-appearance: none; border: 0; background: none; padding: 4px; position: relative;
+  border-radius: var(--cs-radius-sm); aspect-ratio: 1; cursor: pointer; color: var(--cs-ink);
+  display: flex; align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent;
+  transition: transform .12s ease, background .12s ease; user-select: none; -webkit-user-select: none;
+}
+.cd-cell img{ width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
+.cd-cell:hover{ background: var(--cs-press); }
+.cd-cell:active{ transform: scale(.94); }
+.cd-grid.selecting .cd-cell{ opacity: .7; }
+.cd-grid.selecting .cd-cell.on, .cd-cell.on{ opacity: 1; background: var(--cs-chip); box-shadow: inset 0 0 0 1.5px var(--cs-accent); }
+.cd-group{ grid-column: 1 / -1; margin: 10px 4px 2px; font-size: 12px; font-weight: 500; letter-spacing: .08em; color: var(--cs-soft); }
+.cd-group:first-child{ margin-top: 2px; }
+.cd-cell.cd-flash{ animation: cdFlash 2.4s ease both; }
+@keyframes cdFlash{
+  0%, 30%, 60%{ background: var(--cs-chip); box-shadow: inset 0 0 0 2px var(--cs-accent); }
+  15%, 45%{ background: transparent; box-shadow: inset 0 0 0 2px transparent; }
+  100%{ background: var(--cs-chip); box-shadow: inset 0 0 0 1.5px var(--cs-accent); }
+}
+@media (prefers-reduced-motion: reduce){ .cd-cell.cd-flash{ animation: none; background: var(--cs-chip); box-shadow: inset 0 0 0 2px var(--cs-accent); } }
+.cd-toast{
+  position: absolute; left: 50%; top: 50px; z-index: 3; transform: translateX(-50%); max-width: calc(100% - 24px);
+  padding: 7px 14px; border-radius: 999px; background: var(--cs-ink); color: var(--cs-paper);
+  font-size: 13px; line-height: 1.4; box-shadow: var(--cs-shadow); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cd-toast[hidden]{ display: none; }
+.cd-note{ grid-column: 1 / -1; margin: 18px 6px; text-align: center; font-size: 13px; line-height: 1.7; color: var(--cs-soft); }
+
+/* forms (add / edit / import) */
+.cd-form{ display: flex; flex-direction: column; gap: 9px; padding: 4px 4px 2px; }
+.cd-field{ display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--cs-soft); }
+.cd-field input[type="text"], .cd-field input[type="url"], .cd-field textarea{
+  padding: 8px 12px; border-radius: var(--cs-radius-sm); border: 1px solid var(--cs-line);
+  background: var(--cs-floor); color: var(--cs-ink); font: inherit; font-size: 14px; outline: none;
+}
+.cd-field input:focus, .cd-field textarea:focus{ border-color: var(--cs-accent); }
+.cd-field input[type="file"]{ font-size: 13px; color: var(--cs-ink); }
+.cd-preview{ max-height: 110px; max-width: 100%; object-fit: contain; align-self: flex-start; border-radius: 10px; margin-top: 4px; }
+.cd-preview[hidden], .cd-err[hidden]{ display: none; }
+.cd-err{ margin: 0; font-size: 12.5px; color: var(--cs-danger); }
+.cd-row{ display: flex; gap: 8px; }
+.cd-btn{
+  appearance: none; -webkit-appearance: none; flex: 1; height: 36px; padding: 0 12px; border-radius: var(--cs-radius-sm);
+  border: 1px solid var(--cs-line); background: var(--cs-paper); color: var(--cs-ink); font: inherit; font-size: 14px; cursor: pointer;
+}
+.cd-btn.cd-primary{ background: var(--cs-accent); border-color: transparent; color: var(--cs-accent-ink); }
+.cd-btn:disabled{ opacity: .5; cursor: default; }
+.cd-btn.cd-small{ flex: none; height: 28px; font-size: 12.5px; border-radius: 999px; }
+.cd-btn.cd-danger{ color: var(--cs-danger); }
+
+/* entry buttons next to the composer (optional helper class) */
+.cs-entry{
+  appearance: none; -webkit-appearance: none; border: 0; background: none; padding: 0;
+  width: 38px; height: 38px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--cs-soft); cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.cs-entry svg{ width: 22px; height: 22px; }
+.cs-entry[aria-expanded="true"], .cs-entry:hover{ color: var(--cs-accent); background: var(--cs-press); }
+
+/* ---- packages/emoji-bg/emoji-bg.css ---- */
+/* chat-stickers · emoji-bg.css
+   Stacking: .ebg-layer is fixed at z-index 0 and inserted before your app root.
+   Give your chat root `position:relative; z-index:1` and a transparent background so the layer shows through.
+   Colours come from core/theme.css (--cs-*); --ebg-alpha sets how strong the emoji are. */
+
+:root{
+  --ebg-alpha: .46;            /* how strong the scattered emoji are on the page */
+  --ebg-alpha-preview: .55;
+  --ebg-z-sheet: 270;
+}
+:root[data-emoji-bg-night="1"]{ --ebg-alpha: .24; --ebg-alpha-preview: .34; }
+
+/* ── background layer ── */
+.ebg-layer{
+  position: fixed; inset: 0; z-index: 0;
+  overflow: hidden; pointer-events: none; contain: strict;
+  background-color: var(--ebg-tint, transparent);
+  transition: background-color .4s ease;
+  font-family: var(--cs-emoji-font);
+  line-height: 1;
+}
+:root:not([data-emoji-bg="on"]) .ebg-layer{ display: none; }
+.ebg-layer .ebg-e,
+.ebg-preview-field .ebg-e{
+  position: absolute; display: block; white-space: nowrap;
+  user-select: none; -webkit-user-select: none;
+}
+.ebg-layer .ebg-e{ filter: opacity(var(--ebg-alpha)); }
+
+/* ── system line in the chat stream ── */
+.ebg-notice{ display: flex; justify-content: center; margin: 10px 0; }
+.ebg-chip{
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 3px 12px; border-radius: 999px;
+  background: var(--cs-chip); color: var(--cs-soft);
+  font-size: 12.5px; letter-spacing: .04em;
+}
+.ebg-notice-e{ font-family: var(--cs-emoji-font); font-size: 14px; margin: 0 2px; }
+.ebg-notice-go{
+  appearance: none; -webkit-appearance: none; border: 0; background: none; margin: 0; padding: 0 0 0 8px;
+  font: inherit; color: var(--cs-accent); cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+
+/* ── picker sheet ── */
+.ebg-sheet{ position: fixed; inset: 0; z-index: var(--ebg-z-sheet); color: var(--cs-ink); font-family: var(--cs-font); }
+.ebg-sheet[hidden]{ display: none; }
+.ebg-scrim{ position: absolute; inset: 0; background: var(--cs-scrim); opacity: 0; transition: opacity .24s ease; }
+.ebg-panel{
+  position: absolute; left: 0; right: 0; bottom: 0; margin: 0 auto;
+  width: min(100%, 560px); height: min(86vh, 720px); height: min(86dvh, 720px);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--cs-paper);
+  border: 1px solid var(--cs-line); border-bottom: 0; border-radius: 16px 16px 0 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  transform: translateY(28px); opacity: 0;
+  transition: transform .26s cubic-bezier(.22,.8,.24,1), opacity .22s ease;
+}
+.ebg-sheet.open .ebg-scrim{ opacity: 1; }
+.ebg-sheet.open .ebg-panel{ transform: none; opacity: 1; }
+@media (prefers-reduced-motion: reduce){ .ebg-panel, .ebg-scrim{ transition: none; } }
+
+.ebg-head{ flex: none; display: grid; grid-template-columns: 44px minmax(0,1fr) 44px; align-items: center; padding: 8px 8px 6px; }
+.ebg-title{ margin: 0; text-align: center; font-size: 15px; font-weight: 500; letter-spacing: .12em; }
+.ebg-icon{
+  appearance: none; -webkit-appearance: none; border: 0; background: none; padding: 0;
+  width: 44px; height: 40px; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--cs-soft); cursor: pointer; border-radius: 12px; -webkit-tap-highlight-color: transparent;
+}
+.ebg-icon svg{ width: 22px; height: 22px; }
+.ebg-icon.ebg-ok{ color: var(--cs-accent); }
+.ebg-icon:disabled{ opacity: .35; cursor: default; }
+.ebg-icon:not(:disabled):active{ background: var(--cs-chip); }
+
+.ebg-preview{
+  position: relative; flex: none; height: clamp(170px, 30vh, 250px); margin: 0 12px;
+  border: 1px solid var(--cs-line); border-radius: 14px; background-color: var(--cs-floor); overflow: hidden;
+}
+.ebg-preview::before{ content: ""; position: absolute; inset: 0; background: var(--ebg-tint, transparent); transition: background .3s ease; }
+.ebg-preview-field{ position: absolute; inset: 0; pointer-events: none; line-height: 1; font-family: var(--cs-emoji-font); }
+.ebg-preview-field .ebg-e{ filter: opacity(var(--ebg-alpha-preview)); }
+.ebg-pills{ position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; }
+.ebg-others{ display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.ebg-pill{
+  display: inline-flex; align-items: center; padding: 4px 12px; min-height: 28px; box-sizing: border-box;
+  border: 1px solid var(--cs-line); border-radius: 999px; background: var(--cs-paper);
+  font-size: 12.5px; letter-spacing: .04em; white-space: nowrap;
+}
+.ebg-pill-other{ color: var(--cs-soft); }
+.ebg-remove{
+  appearance: none; -webkit-appearance: none; border: 0; background: none; margin: 0 0 0 8px; padding: 0 0 0 8px;
+  border-left: 1px solid var(--cs-line); font: inherit; color: var(--cs-accent); cursor: pointer;
+}
+.ebg-remove[hidden]{ display: none; }
+
+.ebg-tabs{ flex: none; display: flex; justify-content: space-between; gap: 2px; margin: 10px 10px 0; padding: 0 0 6px; border-bottom: 1px solid var(--cs-line); }
+.ebg-tab{
+  appearance: none; -webkit-appearance: none; border: 0; background: none; padding: 0;
+  flex: 1 1 0; max-width: 52px; height: 34px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--cs-soft); cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.ebg-tab svg{ width: 20px; height: 20px; }
+.ebg-tab.on{ background: var(--cs-chip); color: var(--cs-accent); }
+.ebg-grid-wrap{ flex: 1 1 auto; min-height: 0; position: relative; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 0 10px 14px; }
+.ebg-sec-t{ margin: 14px 4px 6px; font-size: 12px; font-weight: 500; letter-spacing: .1em; color: var(--cs-soft); }
+.ebg-grid{ display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 2px; }
+.ebg-cell{
+  appearance: none; -webkit-appearance: none; border: 0; background: none; padding: 0;
+  aspect-ratio: 1; border-radius: 12px; cursor: pointer;
+  font-family: var(--cs-emoji-font); font-size: 28px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent; transition: transform .12s ease, background .12s ease;
+}
+.ebg-cell:active{ transform: scale(1.15); }
+.ebg-cell.on{ background: var(--cs-chip); box-shadow: inset 0 0 0 1px var(--cs-accent); }
+.ebg-empty{ margin: 4px 4px 0; font-size: 12px; color: var(--cs-soft); }
+
+@media (min-width: 760px){
+  .ebg-panel{ bottom: 50%; transform: translateY(calc(50% + 28px)); border-bottom: 1px solid var(--cs-line); border-radius: 16px; height: min(80vh, 680px); }
+  .ebg-sheet.open .ebg-panel{ transform: translateY(50%); }
+}
+
+/* ---- packages/reactions/reactions.css ---- */
+/* chat-stickers · reactions.css — the 2 × 4 grid and the chips on the bubble's corner. Uses theme.css. */
+.rx-layer{ position: fixed; inset: 0; z-index: 250; }
+.rx-layer[hidden]{ display: none; }
+.rx-scrim{ position: absolute; inset: 0; background: var(--cs-scrim); opacity: 0; transition: opacity .2s ease; }
+.rx-layer.open .rx-scrim{ opacity: 1; }
+.rx-clone{
+  position: fixed !important; margin: 0 !important; z-index: 1; pointer-events: none; box-sizing: border-box;
+  transform-origin: center; transition: transform .22s var(--cs-ease), box-shadow .22s ease;
+}
+.rx-layer.open .rx-clone{ transform: scale(1.03); box-shadow: var(--cs-shadow); }
+.rx-card{
+  position: fixed; z-index: 2; padding: 6px; border-radius: var(--cs-radius);
+  background: var(--cs-paper); border: 1px solid var(--cs-line); box-shadow: var(--cs-shadow); color: var(--cs-ink);
+  opacity: 0; transform: scale(.94); transition: opacity .16s ease, transform .22s var(--cs-ease);
+}
+.rx-layer.open .rx-card{ opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce){ .rx-card, .rx-clone, .rx-scrim{ transition: none; } }
+.rx-grid{ display: grid; grid-template-columns: repeat(4, 56px); gap: 4px; }
+.rx-cell{
+  appearance: none; -webkit-appearance: none; border: 0; background: transparent; width: 56px; height: 52px; padding: 0;
+  border-radius: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: var(--cs-soft); -webkit-tap-highlight-color: transparent; transition: transform .12s ease, background .12s ease;
+}
+.rx-glyph{ font-family: var(--cs-emoji-font); font-size: 30px; line-height: 1; display: flex; }
+.rx-glyph img{ width: 32px; height: 32px; object-fit: contain; }
+.rx-cell svg{ width: 22px; height: 22px; }
+.rx-cell:hover{ background: var(--cs-press); }
+.rx-cell:active{ transform: scale(.94); background: var(--cs-press); }
+.rx-cell.on{ background: var(--cs-press); box-shadow: inset 0 0 0 1.5px var(--cs-accent); }
+.rx-actions{ display: flex; flex-direction: column; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--cs-line); }
+.rx-actions[hidden]{ display: none; }
+.rx-act{
+  appearance: none; -webkit-appearance: none; border: 0; background: none; display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: 10px; color: var(--cs-ink); font: inherit; font-size: 14px; cursor: pointer; text-align: left;
+}
+.rx-act svg{ width: 18px; height: 18px; }
+.rx-act:hover{ background: var(--cs-press); }
+
+/* chips on the bubble (the bubble needs position:relative) */
+.rx-has{ margin-bottom: 10px; }
+.rx-has-sticker{ margin-bottom: 31px; }
+.rx-chips{ position: absolute; right: -7px; bottom: -11px; z-index: 2; display: flex; gap: 3px; align-items: center; white-space: nowrap; }
+.rx-has-sticker > .rx-chips{ bottom: -27px; right: -13px; }
+.rx-chip{
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; box-sizing: border-box;
+  border-radius: 50%; font-family: var(--cs-emoji-font); font-size: 15px; line-height: 1;
+  background: var(--cs-paper); border: 1px solid var(--cs-line); box-shadow: 0 2px 8px rgba(78, 94, 108, .14);
+  user-select: none; -webkit-user-select: none; animation: rxPop .52s cubic-bezier(.34, 1.56, .5, 1) both;
+}
+.rx-chip-sticker{ width: 44px; height: 44px; border: 0; border-radius: 0; background: transparent; box-shadow: none; filter: drop-shadow(0 2px 4px rgba(78, 94, 108, .22)); }
+.rx-chip-sticker img{ width: 100%; height: 100%; object-fit: contain; display: block; }
+/* bubbles on the left side: chips hang off the left corner */
+.rx-left > .rx-chips{ right: auto; left: -4px; }
+@keyframes rxPop{ 0%{ transform: scale(0) rotate(-16deg); opacity: 0; } 55%{ transform: scale(1.22) rotate(5deg); opacity: 1; } 100%{ transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce){ .rx-chip{ animation: none; } }
+
+/* ---- packages/stickers/stickers.css ---- */
+/* chat-stickers · stickers.css — stickers inside messages. Uses theme.css; the drawer itself is core/drawer.css. */
+.st-inline{ display: inline-block; width: 96px; height: 96px; object-fit: contain; vertical-align: bottom; margin: 2px 0; }
+/* a message that is only one sticker: the bubble steps aside, the picture stands on its own */
+.st-only{ background: transparent !important; border-color: transparent !important; box-shadow: none !important; padding: 0 !important; }
+.st-only .st-inline{ width: 128px; height: 128px; margin: 0; }
+.cd-stickers .cd-cell img{ filter: drop-shadow(0 1px 2px rgba(0,0,0,.06)); }
+
+/* ---- packages/kaomoji/kaomoji.css ---- */
+/* chat-stickers · kaomoji.css — text cells and the import views. Uses theme.css + drawer.css. */
+.cd-kaomoji .cd-grid{ grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 4px; }
+.cd-kaomoji .cd-cell{ aspect-ratio: auto; min-height: 40px; padding: 6px 8px; border: 1px solid var(--cs-line); background: var(--cs-floor); }
+.cd-kaomoji .cd-cell:hover{ background: var(--cs-press); }
+.kb-text{ font-size: 14px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+.kb-found{ margin: 0; font-size: 13px; color: var(--cs-soft); }
+.kb-tools{ display: flex; gap: 6px; }
+.kb-list{
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px;
+  max-height: 34vh; overflow-y: auto; overscroll-behavior: contain; padding: 2px;
+}
+.kb-cand{
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px;
+  border: 1px solid var(--cs-line); background: var(--cs-floor); font-size: 14px; cursor: pointer; min-width: 0;
+}
+.kb-cand span{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-cand input{ accent-color: var(--cs-accent); flex: none; }
+.kb-cand:has(input:not(:checked)){ opacity: .55; }
+.kb-cand.kb-had{ opacity: .42; cursor: default; }
+.kb-had-t{ margin-left: auto; flex: none; font-style: normal; font-size: 11px; color: var(--cs-soft); padding: 1px 7px; border-radius: 999px; border: 1px solid var(--cs-line); }
+.kb-sources{ display: flex; flex-direction: column; gap: 6px; padding: 2px; }
+.kb-src{ display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--cs-line); border-radius: var(--cs-radius-sm); }
+.kb-src-t{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.kb-url{ font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-when{ font-size: 11.5px; color: var(--cs-soft); }

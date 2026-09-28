@@ -1,0 +1,26 @@
+/* chat-stickers · kaomoji.css — text cells and the import views. Uses theme.css + drawer.css. */
+.cd-kaomoji .cd-grid{ grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 4px; }
+.cd-kaomoji .cd-cell{ aspect-ratio: auto; min-height: 40px; padding: 6px 8px; border: 1px solid var(--cs-line); background: var(--cs-floor); }
+.cd-kaomoji .cd-cell:hover{ background: var(--cs-press); }
+.kb-text{ font-size: 14px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+.kb-found{ margin: 0; font-size: 13px; color: var(--cs-soft); }
+.kb-tools{ display: flex; gap: 6px; }
+.kb-list{
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px;
+  max-height: 34vh; overflow-y: auto; overscroll-behavior: contain; padding: 2px;
+}
+.kb-cand{
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px;
+  border: 1px solid var(--cs-line); background: var(--cs-floor); font-size: 14px; cursor: pointer; min-width: 0;
+}
+.kb-cand span{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-cand input{ accent-color: var(--cs-accent); flex: none; }
+.kb-cand:has(input:not(:checked)){ opacity: .55; }
+.kb-cand.kb-had{ opacity: .42; cursor: default; }
+.kb-had-t{ margin-left: auto; flex: none; font-style: normal; font-size: 11px; color: var(--cs-soft); padding: 1px 7px; border-radius: 999px; border: 1px solid var(--cs-line); }
+.kb-sources{ display: flex; flex-direction: column; gap: 6px; padding: 2px; }
+.kb-src{ display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--cs-line); border-radius: var(--cs-radius-sm); }
+.kb-src-t{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.kb-url{ font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-when{ font-size: 11.5px; color: var(--cs-soft); }
