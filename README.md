@@ -153,7 +153,7 @@ python3 packages/stickers/serve.py 8765    # 最小服务：列表 / 出图 / �
 
 ## 许可证
 
-MIT。见 `LICENSE`。
+CC BY-NC-SA 4.0（署名 · 非商业 · 相同方式共享）。见 `LICENSE`。
 
 ## 致谢
 
@@ -209,7 +209,7 @@ Nine built-in groups in `packages/kaomoji/kaomoji.json`. **Paste any kaomoji web
 
 ## License
 
-MIT. See `LICENSE`.
+CC BY-NC-SA 4.0 (Attribution · NonCommercial · ShareAlike). See `LICENSE`.
 
 ## Acknowledgements
 
