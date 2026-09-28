@@ -20,7 +20,7 @@
     zh: {
       title: "聊天背景", close: "不改了", ok: "就这样贴", remove: "移除", me: "我", you: "你",
       picked: function (n, e) { return n + "已选择" + e; }, none: function (n) { return n + "还没贴"; },
-      set: function (n, e) { return n + "往背景贴了" + e; }, unset: function (n, e) { return n + "揭下了背景上的" + e; },
+      set: function (n, e) { return n + "给背景贴了一个 " + e; }, unset: function (n, e) { return n + "揭下了背景上的" + e; },
       addYours: "贴一个", failed: "没贴上，再试一次", recentEmpty: "贴过的会排在这里", tabs: "emoji 分类",
       cats: { recent: "最近使用", face: "表情", animal: "动物与自然", food: "食物", activity: "活动", travel: "旅行", object: "物品", symbol: "符号" },
     },

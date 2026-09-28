@@ -61,6 +61,18 @@
 .cd-pill-edit button{ appearance: none; -webkit-appearance: none; border: 0; background: none; padding: 0; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--cs-accent); cursor: pointer; }
 .cd-pill-edit button svg{ width: 16px; height: 16px; }
 
+/* tag chips (tagger in drawer.js): the item's tags filled (tap = take off), "+ Add tag" opens an inline input,
+   tags other items already use sit underneath (tap = put on) */
+.cd-tags{ display: flex; flex-direction: column; gap: 7px; }
+.cd-tags .cd-pills[hidden]{ display: none; }
+.cd-tag-on, .cd-tag-tail{ display: contents; }
+.cd-pill.cd-tag{ padding-right: 8px; }
+.cd-pill.cd-tag svg{ width: 13px; height: 13px; opacity: .75; }
+.cd-field .cd-tag-tail .cd-pill-edit input[type="text"]{ width: 9em; }
+.cd-tag-used{ align-items: center; }
+.cd-tag-hint{ font-size: 11.5px; color: var(--cs-soft); margin-right: 2px; }
+.cd-pill.cd-tag-s{ background: transparent; color: var(--cs-soft); }
+
 /* manage groups */
 .cd-groups{ display: flex; flex-direction: column; gap: 6px; padding: 2px; }
 .cd-grow{ display: flex; align-items: center; gap: 2px; padding: 4px 4px 4px 12px; border: 1px solid var(--cs-line); border-radius: var(--cs-radius-sm); background: var(--cs-paper); }
@@ -158,6 +170,8 @@
 .cd-preview[hidden], .cd-err[hidden]{ display: none; }
 .cd-err{ margin: 0; font-size: 12.5px; color: var(--cs-danger); }
 .cd-row{ display: flex; gap: 8px; }
+/* Save / Cancel stay in reach while the form scrolls (the drawer body is the scroller) */
+.cd-form > .cd-row{ position: sticky; bottom: 0; z-index: 1; padding: 8px 0 2px; background: var(--cs-paper); }
 .cd-btn{
   appearance: none; -webkit-appearance: none; flex: 1; height: 36px; padding: 0 12px; border-radius: var(--cs-radius-sm);
   border: 1px solid var(--cs-line); background: var(--cs-paper); color: var(--cs-ink); font: inherit; font-size: 14px; cursor: pointer;

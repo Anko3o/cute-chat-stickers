@@ -14,8 +14,8 @@
   "use strict";
 
   var L10N = {
-    zh: { title: "表情包", name: "名字", namePh: "比如：兔子晕倒", desc: "一句描述", descPh: "不看图也能认出它", tags: "标签", tagsPh: "用逗号隔开", image: "图片", group: "分组" },
-    en: { title: "Stickers", name: "Name", namePh: "e.g. dizzy-bunny", desc: "Description", descPh: "so it can be found without seeing it", tags: "Tags", tagsPh: "comma separated", image: "Image", group: "Group" },
+    zh: { title: "表情包", name: "名字", namePh: "比如：兔子晕倒", desc: "一句描述", descPh: "不看图也能认出它", tags: "标签", tagsPh: "打完回车接着加", image: "图片", group: "分组" },
+    en: { title: "Stickers", name: "Name", namePh: "e.g. dizzy-bunny", desc: "Description", descPh: "so it can be found without seeing it", tags: "Tags", tagsPh: "Enter adds another", image: "Image", group: "Group" },
   };
 
   var drawer = null, o = null, pickCb = null;

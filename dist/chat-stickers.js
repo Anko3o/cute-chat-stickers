@@ -175,12 +175,14 @@
       back: "返回", loading: "在翻抽屉…", failed: "没读到，等会儿再试", empty: "还空着——点右上角的 ＋ 加第一个", noHit: "没搜到",
       pickOne: "点一格来修改或删除", confirmDel: function (n) { return "删掉「" + n + "」？"; },
       group: "分组", ungrouped: "未分组", newGroup: "新分组", groupPh: "分组名", manageGroups: "管理分组", addGroup: "添加",
+      addTag: "加标签", tagPh: "打完回车接着加", usedTags: "用过的", removeTag: function (t) { return "去掉标签「" + t + "」"; },
       noGroups: "还没有分组——在下面起一个名字", up: "上移", down: "下移", rename: "点名字改名",
       confirmDelGroup: function (n, c) { return "删掉分组「" + n + "」？" + (c ? "里面的 " + c + " 个会并入「未分组」。" : ""); } },
     en: { search: "Search", add: "Add", more: "More", organize: "Organize (pick one to edit or delete)", edit: "Edit", del: "Delete", cancel: "Cancel", save: "Save",
       back: "Back", loading: "Loading…", failed: "Couldn't load, try again later", empty: "Empty — tap + at the top to add the first one", noHit: "No match",
       pickOne: "Tap one to edit or delete", confirmDel: function (n) { return "Delete \"" + n + "\"?"; },
       group: "Group", ungrouped: "Ungrouped", newGroup: "New group", groupPh: "Group name", manageGroups: "Manage groups", addGroup: "Add",
+      addTag: "Add tag", tagPh: "Enter adds another", usedTags: "Used", removeTag: function (t) { return "Remove tag \"" + t + "\""; },
       noGroups: "No groups yet — name one below", up: "Move up", down: "Move down", rename: "Tap the name to rename",
       confirmDelGroup: function (n, c) { return "Delete the group \"" + n + "\"?" + (c ? " Its " + c + " item(s) become ungrouped." : ""); } },
   };
@@ -295,7 +297,7 @@
     function select(it) { selecting = true; selected = it || null; paintBars(); paint(); }
     function unselect() { selecting = false; selected = null; paintBars(); paint(); }
 
-    function showView(title, node) {
+    function showView(title, node, opt) {           // opt.focus === false: don't pop the phone keyboard
       mode = "view";
       closeMenu();
       root.querySelector(".cd-view-t").textContent = title || "";
@@ -303,23 +305,24 @@
       view.appendChild(node);
       grid.hidden = true; view.hidden = false;
       paintBars();
-      var f = view.querySelector("input[type=text], input[type=url], textarea");
+      var f = opt && opt.focus === false ? null : view.querySelector("input[type=text], input[type=url], textarea");
       if (f) setTimeout(function () { f.focus(); }, 30);
     }
     function back() { mode = "grid"; view.hidden = true; grid.hidden = false; view.innerHTML = ""; paintBars(); paint(); }
 
-    /* A tiny form from field specs: {key, label, type: text|textarea|tags|group|file, placeholder, required, max} */
+    /* A tiny form from field specs: {key, label, type: text|textarea|tags|group|file, placeholder, required, max}.
+       tags = package-drawn chips (see tagger()); group = package-drawn pills. The Save row sticks to the bottom. */
     function form(fields, initial, submitLabel, onSubmit) {
       var f = document.createElement("form");
       f.className = "cd-form";
       f.innerHTML = fields.map(function (fd) {
         var v = initial ? initial[fd.key] : "";
-        if (fd.type === "tags" && Array.isArray(v)) v = v.join(", ");
         var ph = ' placeholder="' + esc(fd.placeholder || "") + '"', req = fd.required ? " required" : "", mx = fd.max ? ' maxlength="' + fd.max + '"' : "";
         var ctl;
         if (fd.type === "file") ctl = '<input type="file" name="' + fd.key + '" accept="' + esc(fd.accept || "image/png,image/jpeg,image/gif,image/webp") + '"' + req + '><img class="cd-preview" alt="" hidden>';
         else if (fd.type === "textarea") ctl = '<textarea name="' + fd.key + '" rows="2"' + ph + req + mx + ">" + esc(v) + "</textarea>";
         else if (fd.type === "group") return G ? '<div class="cd-field"><span>' + esc(fd.label || L.group) + '</span><div data-pills="' + fd.key + '"></div></div>' : "";
+        else if (fd.type === "tags") return '<div class="cd-field"><span>' + esc(fd.label) + '</span><div data-tags="' + fd.key + '"></div></div>';
         else ctl = '<input type="text" name="' + fd.key + '" value="' + esc(v) + '"' + ph + req + mx + ">";
         return '<label class="cd-field"><span>' + esc(fd.label) + "</span>" + ctl + "</label>";
       }).join("") +
@@ -329,6 +332,12 @@
       f.querySelectorAll("[data-pills]").forEach(function (slot) {
         var p = pills(initial ? initial[slot.dataset.pills] : (o.defaultGroup != null ? o.defaultGroup : null));
         slot.replaceWith(p.el); pickers[slot.dataset.pills] = p;
+      });
+      var taggers = {};
+      f.querySelectorAll("[data-tags]").forEach(function (slot) {
+        var fd = fields.find(function (x) { return x.key === slot.dataset.tags; });
+        var t = tagger(initial ? initial[fd.key] : [], fd.placeholder);
+        slot.replaceWith(t.el); taggers[fd.key] = t;
       });
       var fileData = "";
       var file = f.querySelector("input[type=file]");
@@ -350,7 +359,8 @@
         fields.forEach(function (fd) {
           if (fd.type === "file") out[fd.key] = fileData;
           else if (fd.type === "group") { if (pickers[fd.key]) out[fd.key] = pickers[fd.key].value(); }
-          else { var v = f.elements[fd.key].value.trim(); out[fd.key] = fd.type === "tags" ? v.split(/[,，]/).map(function (s) { return s.trim(); }).filter(Boolean) : v; }
+          else if (fd.type === "tags") out[fd.key] = taggers[fd.key] ? taggers[fd.key].value() : [];
+          else out[fd.key] = f.elements[fd.key].value.trim();
         });
         var sb = f.querySelector(".cd-primary"); sb.disabled = true;
         var keys = Object.keys(pickers);
@@ -364,6 +374,71 @@
           .then(function () { sb.disabled = false; });
       });
       return f;
+    }
+
+    /* Tag chips drawn by the package — for tagging a shelf one item after another without typing much:
+       the item's tags (tap one = take it off), tags other items already use (tap one = put it on), and "+ Add tag",
+       which opens an inline input: Enter (or a comma) adds and keeps it open for the next one. Nothing here closes
+       the form. value() → [tags], including whatever is still typed in the input. */
+    function tagger(initial, ph) {
+      function clean(t) { return String(t == null ? "" : t).split(/\s+/).join(" ").trim(); }
+      var cur = [];
+      function put(t) { t = clean(t); if (t && cur.indexOf(t) < 0) cur.push(t); }
+      (Array.isArray(initial) ? initial : String(initial || "").split(/[,，]/)).forEach(put);
+      var el = document.createElement("div");
+      el.className = "cd-tags";
+      el.innerHTML = '<div class="cd-pills"><span class="cd-tag-on"></span><span class="cd-tag-tail"></span></div><div class="cd-pills cd-tag-used" hidden></div>';
+      var on = el.querySelector(".cd-tag-on"), tail = el.querySelector(".cd-tag-tail"), used = el.querySelector(".cd-tag-used");
+      var inp = null;
+      function known() {                               // tags on the other items, most used first
+        var n = {};
+        (items || []).forEach(function (it) { (it.tags || []).forEach(function (t) { t = clean(t); if (t) n[t] = (n[t] || 0) + 1; }); });
+        return Object.keys(n).filter(function (t) { return cur.indexOf(t) < 0; })
+          .sort(function (a, b) { return (n[b] - n[a]) || a.localeCompare(b); }).slice(0, 16);
+      }
+      function draw() {
+        on.innerHTML = cur.map(function (t) {
+          return '<button type="button" class="cd-pill on cd-tag" data-rm="' + esc(t) + '" aria-label="' + esc(L.removeTag(t)) + '"><span>' + esc(t) + "</span>" + ICON.x + "</button>";
+        }).join("");
+        var k = known();
+        used.hidden = !k.length;
+        used.innerHTML = k.length ? '<span class="cd-tag-hint">' + esc(L.usedTags) + "</span>" +
+          k.map(function (t) { return '<button type="button" class="cd-pill cd-tag-s" data-put="' + esc(t) + '">' + esc(t) + "</button>"; }).join("") : "";
+      }
+      function drawTail() {
+        inp = null;
+        tail.innerHTML = '<button type="button" class="cd-pill cd-pill-new" data-new="1">' + ICON.plus + "<span>" + esc(L.addTag) + "</span></button>";
+      }
+      function take() { if (!inp) return; var parts = inp.value.split(/[,，]/); inp.value = ""; parts.forEach(put); draw(); }
+      function openInput() {
+        tail.innerHTML = '<span class="cd-pill-edit"><input type="text" maxlength="40" enterkeyhint="done" placeholder="' + esc(ph || L.tagPh) + '" aria-label="' + esc(L.addTag) +
+          '"><button type="button" aria-label="' + esc(L.addTag) + '">' + ICON.check + "</button></span>";
+        inp = tail.querySelector("input");
+        var me = inp;
+        inp.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") { e.preventDefault(); if (me.value.trim()) take(); else drawTail(); }
+          else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); drawTail(); }
+        });
+        inp.addEventListener("input", function () {    // a comma typed or pasted = that tag is done
+          if (!/[,，]/.test(me.value)) return;
+          var parts = me.value.split(/[,，]/), rest = parts.pop();
+          parts.forEach(put); me.value = rest; draw();
+        });
+        inp.addEventListener("blur", function () {     // tapped somewhere else: keep what was typed, fold the input
+          setTimeout(function () { if (inp === me && document.activeElement !== me) { take(); drawTail(); } }, 150);
+        });
+        tail.querySelector("button").addEventListener("click", function () { take(); if (inp === me) me.focus(); });
+        me.focus();                                    // in the tap itself, or iOS won't raise the keyboard
+      }
+      el.addEventListener("click", function (e) {
+        if (e.target.closest(".cd-pill-new")) return openInput();
+        var b = e.target.closest("[data-rm]");
+        if (b) { var i = cur.indexOf(b.dataset.rm); if (i >= 0) cur.splice(i, 1); return draw(); }
+        b = e.target.closest("[data-put]");
+        if (b) { put(b.dataset.put); draw(); }
+      });
+      draw(); drawTail();
+      return { el: el, value: function () { if (inp && inp.value.trim()) take(); return cur.slice(); } };
     }
 
     /* Group pills drawn by the package: "Ungrouped", every group in order, then "+ New group" (turns into an inline input).
@@ -520,7 +595,8 @@
     function openEdit() {
       if (!selected) return;
       var it = selected;
-      showView(L.edit + " · " + nameOf(it), form(o.fields.edit, it, L.save, function (v) { return o.store.edit(it, v); }));
+      // editing is mostly tagging one item after another: don't focus the name (it pops the keyboard on phones)
+      showView(L.edit + " · " + nameOf(it), form(o.fields.edit, it, L.save, function (v) { return o.store.edit(it, v); }), { focus: false });
     }
     function doDelete() {
       if (!selected || !confirm(L.confirmDel(nameOf(selected)))) return;
@@ -616,7 +692,7 @@
     var api = {
       root: root, open: open, close: close, toggle: toggle, reload: reload, paint: paint, reset: reset,
       loaded: function () { return items !== null || loading; },
-      showView: showView, back: back, form: form, select: select, unselect: unselect, flash: flash,
+      showView: showView, back: back, form: form, tagger: tagger, select: select, unselect: unselect, flash: flash,
       items: function () { return items || []; }, labels: L, esc: esc, icons: ICON,
       groups: function () { return groups.slice(); }, groupName: groupName, pills: pills, ensureGroup: ensureGroup, refreshGroups: refreshGroups,
     };
@@ -786,7 +862,7 @@
     zh: {
       title: "聊天背景", close: "不改了", ok: "就这样贴", remove: "移除", me: "我", you: "你",
       picked: function (n, e) { return n + "已选择" + e; }, none: function (n) { return n + "还没贴"; },
-      set: function (n, e) { return n + "往背景贴了" + e; }, unset: function (n, e) { return n + "揭下了背景上的" + e; },
+      set: function (n, e) { return n + "给背景贴了一个 " + e; }, unset: function (n, e) { return n + "揭下了背景上的" + e; },
       addYours: "贴一个", failed: "没贴上，再试一次", recentEmpty: "贴过的会排在这里", tabs: "emoji 分类",
       cats: { recent: "最近使用", face: "表情", animal: "动物与自然", food: "食物", activity: "活动", travel: "旅行", object: "物品", symbol: "符号" },
     },
@@ -1449,8 +1525,8 @@
   "use strict";
 
   var L10N = {
-    zh: { title: "表情包", name: "名字", namePh: "比如：兔子晕倒", desc: "一句描述", descPh: "不看图也能认出它", tags: "标签", tagsPh: "用逗号隔开", image: "图片", group: "分组" },
-    en: { title: "Stickers", name: "Name", namePh: "e.g. dizzy-bunny", desc: "Description", descPh: "so it can be found without seeing it", tags: "Tags", tagsPh: "comma separated", image: "Image", group: "Group" },
+    zh: { title: "表情包", name: "名字", namePh: "比如：兔子晕倒", desc: "一句描述", descPh: "不看图也能认出它", tags: "标签", tagsPh: "打完回车接着加", image: "图片", group: "分组" },
+    en: { title: "Stickers", name: "Name", namePh: "e.g. dizzy-bunny", desc: "Description", descPh: "so it can be found without seeing it", tags: "Tags", tagsPh: "Enter adds another", image: "Image", group: "Group" },
   };
 
   var drawer = null, o = null, pickCb = null;
