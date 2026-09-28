@@ -3,7 +3,7 @@
  *   StickerRender.config({ src: (name) => "/sticker/" + encodeURIComponent(name) });
  *   StickerRender.into(bubbleEl, messageText);     // escapes the text, swaps sticker tags for images,
  *                                                  // adds .st-only when the message is just one sticker
- * Zero dependencies. MIT (placeholder).
+ * Zero dependencies. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";

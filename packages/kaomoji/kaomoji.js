@@ -8,7 +8,7 @@
  * With `api`: GET/POST {api}/kaomoji · PUT/DELETE {api}/kaomoji/<id> · POST {api}/kaomoji/import/preview ·
  *             POST {api}/kaomoji/import · GET/DELETE {api}/kaomoji/sources
  * Without it: KaomojiBox.localStore(seedUrl) keeps everything in this browser (imports then need same-origin or CORS pages).
- * Built on core/drawer.js. MIT (placeholder).
+ * Built on core/drawer.js. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";

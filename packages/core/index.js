@@ -10,7 +10,7 @@
  *     stickers: { button: "#stickerBtn", input: "#input", send: (text) => send(text) },
  *     kaomoji:  { button: "#kaomojiBtn", input: "#input" },
  *   })
- * Any of background / reactions / stickers / kaomoji can be `false`. MIT (placeholder).
+ * Any of background / reactions / stickers / kaomoji can be `false`. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";

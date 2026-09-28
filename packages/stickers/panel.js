@@ -6,7 +6,7 @@
  * With `api`, it talks to packages/stickers/serve.py (or server/fastapi_example.py):
  *   GET {api}/stickers · POST {api}/stickers · PUT/DELETE {api}/stickers/<id> · GET {api}/sticker/<name>
  * Without it, pass `store` (see ChatDrawer.localStore / StickerPanel.localStore) or `listUrl` for a read-only index.json.
- * Zero dependencies besides core/drawer.js. MIT (placeholder).
+ * Zero dependencies besides core/drawer.js. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";

@@ -9,7 +9,7 @@
  * - The page background is tinted a little towards the emojis' average colour (`mix`), less when the colour is grey.
  * - State is shared through a tiny adapter: GET/PUT `endpoint` + an SSE stream by default (see server/PROTOCOL.md),
  *   localStorage when there is no endpoint, or bring your own `adapter: { load, save, subscribe }`.
- * Zero dependencies. MIT (placeholder).
+ * Zero dependencies. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";

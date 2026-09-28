@@ -6,7 +6,7 @@
  *
  *   ChatDrawer.create({ button, anchor, title, store: { list, add, edit, remove }, cell, onPick, fields })
  *
- * Needs core/press.js for long-press on cells (right-click works without it). Zero dependencies. MIT (placeholder).
+ * Needs core/press.js for long-press on cells (right-click works without it). Zero dependencies. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";

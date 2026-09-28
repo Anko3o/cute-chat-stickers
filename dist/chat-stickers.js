@@ -1,4 +1,4 @@
-/*! chat-stickers — long-press where you want it to stick. Built from packages/ by build.sh. MIT (placeholder). */
+/*! chat-stickers — long-press where you want it to stick. Built from packages/ by build.sh. CC BY-NC-SA 4.0. */
 
 /* ---- packages/core/press.js ---- */
 /*! chat-stickers · press.js — one long-press, three landing spots.
@@ -17,7 +17,7 @@
  *  - After a long-press fires, iOS sends a synthetic click on finger-up; that click is
  *    swallowed so the sheet that just opened does not close itself.
  *  - Desktop: hold the left mouse button, or right-click.
- * Zero dependencies. MIT (placeholder).
+ * Zero dependencies. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";
@@ -147,7 +147,7 @@
  *
  *   ChatDrawer.create({ button, anchor, title, store: { list, add, edit, remove }, cell, onPick, fields })
  *
- * Needs core/press.js for long-press on cells (right-click works without it). Zero dependencies. MIT (placeholder).
+ * Needs core/press.js for long-press on cells (right-click works without it). Zero dependencies. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";
@@ -510,7 +510,7 @@
  * - The page background is tinted a little towards the emojis' average colour (`mix`), less when the colour is grey.
  * - State is shared through a tiny adapter: GET/PUT `endpoint` + an SSE stream by default (see server/PROTOCOL.md),
  *   localStorage when there is no endpoint, or bring your own `adapter: { load, save, subscribe }`.
- * Zero dependencies. MIT (placeholder).
+ * Zero dependencies. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";
@@ -942,7 +942,7 @@
  * No text labels in the grid (aria-label only). The 8th cell opens "more": by default the sticker panel
  * (if stickers/panel.js is loaded), so a bubble can get a sticker too. Values are plain strings:
  * an emoji, or a sticker tag like [[sticker:name]].
- * Zero dependencies. MIT (placeholder).
+ * Zero dependencies. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";
@@ -1122,7 +1122,7 @@
  *   StickerRender.config({ src: (name) => "/sticker/" + encodeURIComponent(name) });
  *   StickerRender.into(bubbleEl, messageText);     // escapes the text, swaps sticker tags for images,
  *                                                  // adds .st-only when the message is just one sticker
- * Zero dependencies. MIT (placeholder).
+ * Zero dependencies. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";
@@ -1176,7 +1176,7 @@
  * With `api`, it talks to packages/stickers/serve.py (or server/fastapi_example.py):
  *   GET {api}/stickers · POST {api}/stickers · PUT/DELETE {api}/stickers/<id> · GET {api}/sticker/<name>
  * Without it, pass `store` (see ChatDrawer.localStore / StickerPanel.localStore) or `listUrl` for a read-only index.json.
- * Zero dependencies besides core/drawer.js. MIT (placeholder).
+ * Zero dependencies besides core/drawer.js. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";
@@ -1286,7 +1286,7 @@
  * With `api`: GET/POST {api}/kaomoji · PUT/DELETE {api}/kaomoji/<id> · POST {api}/kaomoji/import/preview ·
  *             POST {api}/kaomoji/import · GET/DELETE {api}/kaomoji/sources
  * Without it: KaomojiBox.localStore(seedUrl) keeps everything in this browser (imports then need same-origin or CORS pages).
- * Built on core/drawer.js. MIT (placeholder).
+ * Built on core/drawer.js. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";
@@ -1561,7 +1561,7 @@
  *     stickers: { button: "#stickerBtn", input: "#input", send: (text) => send(text) },
  *     kaomoji:  { button: "#kaomojiBtn", input: "#input" },
  *   })
- * Any of background / reactions / stickers / kaomoji can be `false`. MIT (placeholder).
+ * Any of background / reactions / stickers / kaomoji can be `false`. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";

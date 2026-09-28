@@ -6,7 +6,7 @@
  * No text labels in the grid (aria-label only). The 8th cell opens "more": by default the sticker panel
  * (if stickers/panel.js is loaded), so a bubble can get a sticker too. Values are plain strings:
  * an emoji, or a sticker tag like [[sticker:name]].
- * Zero dependencies. MIT (placeholder).
+ * Zero dependencies. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";

@@ -14,7 +14,7 @@
  *  - After a long-press fires, iOS sends a synthetic click on finger-up; that click is
  *    swallowed so the sheet that just opened does not close itself.
  *  - Desktop: hold the left mouse button, or right-click.
- * Zero dependencies. MIT (placeholder).
+ * Zero dependencies. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";
