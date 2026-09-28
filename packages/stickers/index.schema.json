@@ -9,7 +9,7 @@
     "next_group_id": { "type": "integer", "minimum": 1, "description": "Next group id to hand out." },
     "groups": {
       "type": "array",
-      "description": "Groups in the user's order. Items store only the group id; deleting a group makes its items ungrouped (group: null).",
+      "description": "Groups in the user's order — the only way to sort stickers (no tags). Items store a list of group ids; deleting a group takes it off its items.",
       "items": {
         "type": "object",
         "required": ["id", "name"],
@@ -30,9 +30,8 @@
           "name": { "type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[^/\\\\.:\\[\\]<>\"'&]+$", "description": "Used in [[sticker:name]]." },
           "file": { "type": "string", "pattern": "^[^/\\\\]+\\.(png|jpg|jpeg|gif|webp)$", "description": "Image file name inside the sticker folder." },
           "desc": { "type": "string", "description": "One line that lets someone find it without seeing it." },
-          "tags": { "type": "array", "items": { "type": "string" } },
           "aliases": { "type": "array", "items": { "type": "string" }, "description": "Old names; kept on rename so old messages still show the image." },
-          "group": { "type": ["integer", "null"], "description": "Group id from `groups`, or null for ungrouped. Older files may hold a group name; it is migrated on load." },
+          "groups": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "uniqueItems": true, "description": "Ids from `groups`; [] = ungrouped. One sticker can be in several. Older files had a single `group` (id or name) and `tags`; both are folded in on load and not written back." },
           "owner": { "type": "string", "description": "Optional: who added it." }
         },
         "additionalProperties": true

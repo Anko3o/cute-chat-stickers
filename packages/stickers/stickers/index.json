@@ -5,9 +5,11 @@
    "name": "蝴蝶结",
    "file": "sample-bow.webp",
    "desc": "一只带小翅膀的粉色蝴蝶结（示例贴纸）",
-   "tags": ["示例", "sample", "bow"],
-   "aliases": []
+   "aliases": [],
+   "groups": []
   }
  ],
- "next_id": 2
+ "groups": [],
+ "next_id": 2,
+ "next_group_id": 1
 }

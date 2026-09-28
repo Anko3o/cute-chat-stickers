@@ -109,14 +109,17 @@ StickerRender.into(bubbleEl, message.text);
 
 ## 分组
 
-贴纸和颜文字用同一套分组。
+贴纸和颜文字用同一套分组。**只有分组，没有另外的标签**：一张图（一条颜文字）可以同时进好几个分组。
 
-- **选分组是包自己画的药丸**，不用原生下拉：「未分组」、每个分组、最后一颗「＋ 新分组」，当前那颗高亮；点「＋ 新分组」原地变成输入框，回车就有了（保存时才真的建）。添加、修改、颜文字导入都用这一排。
-- **修改一条就能换分组**：「…」→「整理」或长按选中 →「修改」，点另一颗药丸，保存。
-- **「…」→「管理分组」**：点名字改名、上下箭头排序、删除（里面的条目并入「未分组」，不会跟着删）、底下一行新建。
-- 抽屉里按你排的顺序分段，「未分组」排最后。
-- **数据**：分组单独存一个有序数组 `groups: [{ id, name, order }]`，条目只存 `group`（分组 id，未分组是 `null`）。旧数据里存的是分组名字，读的时候自动迁移（每个名字建一个分组）。浏览器本地的 `localStore` 也一样迁移。
-- 接口：`GET/POST/PUT {api}/stickers/groups`、`PUT/DELETE {api}/stickers/groups/<id>`，颜文字是 `{api}/kaomoji/groups`，见 PROTOCOL。命令行：`sticker.py groups [add 名字 | rename id 名字 | rm id | up id | down id]`，颜文字前面加 `kaomoji`。
+<img src="docs/shot-edit.png" alt="修改一张：名字、一句描述、分组药丸，两颗亮着＝在两个组里" width="260" align="right">
+
+- **表单只有三样**：名字、一句描述、分组（颜文字是颜文字本身 ＋ 分组）。修改时不自动聚焦任何输入框，手机上不弹键盘。
+- **分组是包自己画的药丸**，不用原生下拉：每个分组一颗，点一下进组（高亮），再点一下出组，可以同时亮好几颗；一颗都不亮＝未分组。最后一颗「＋ 新分组」原地变成输入框，回车就亮上了（保存时才真的建）。添加、修改、颜文字导入都用这一排。
+- **抽屉按分组分段**，按你排的顺序；进了几个组就在几段里各出现一次，「未分组」排最后。
+- **搜索**只看名字、一句描述、分组名（改过名的旧名字也算）。
+- **「…」→「管理分组」**：点名字改名、上下箭头排序、删除（只是把这个组从条目上摘掉，条目不会跟着删）、底下一行新建。
+- **数据**：分组单独存一个有序数组 `groups: [{ id, name, order }]`，条目存 `groups: [分组 id, …]`（未分组是 `[]`）。旧数据读进来自动升级：以前单个的 `group`（id 或名字）和 `tags` 都并进 `groups`，标签没有同名分组就新建一个、排在已有分组后面；写回时不再有 `group` / `tags`。浏览器本地的 `localStore` 也一样迁移。
+- 接口：`GET/POST/PUT {api}/stickers/groups`、`PUT/DELETE {api}/stickers/groups/<id>`，颜文字是 `{api}/kaomoji/groups`，条目增改带 `groups`，见 PROTOCOL。命令行：`sticker.py groups [add 名字 | rename id 名字 | rm id | up id | down id]`，颜文字前面加 `kaomoji`；条目用 `--groups a,b`（`--group` 是它的别名，`--groups ""` 清空）。
 
 ## 为什么 AI 发表情包不花 token
 
@@ -132,9 +135,9 @@ AI 老忘记自己会发表情包，多半是因为它得先去查有哪些图�
 
 ```sh
 export STICKER_DIR=~/my-stickers            # 或者每条命令加 --dir
-python3 packages/stickers/sticker.py add ~/Downloads/dizzy.png 兔子晕倒 "转圈圈倒下" 兔子,晕 --group 兔子
+python3 packages/stickers/sticker.py add ~/Downloads/dizzy.png 兔子晕倒 "转圈圈倒下" --groups 兔子,装死
 python3 packages/stickers/sticker.py list 兔
-python3 packages/stickers/sticker.py edit 兔子晕倒 --name 晕倒兔 --desc "新描述" --tags 兔子,晕 --group 装死
+python3 packages/stickers/sticker.py edit 兔子晕倒 --name 晕倒兔 --desc "新描述" --groups 兔子
 python3 packages/stickers/sticker.py rm 晕倒兔
 python3 packages/stickers/serve.py 8765    # 最小服务：列表 / 出图 / 增改删
 ```
@@ -142,8 +145,8 @@ python3 packages/stickers/serve.py 8765    # 最小服务：列表 / 出图 / �
 - 消息里写 `[[sticker:名字]]`（`[[表情:名字]]`、`[[sticker:12]]` 也认），`StickerRender` 把它换成图；整条只有一张图时气泡让位。
 - 每张有稳定编号，删了不复用；**改名字时文件跟着改，旧名字留进 `aliases`**，历史消息里的旧名照样出图。
 - 抽屉顶栏 ＝ 搜索 ＋ 添加 ＋ 更多：「…」→「整理」或长按 / 右键某一格选中它，顶栏变成「修改 · 删除」。格子只管挑，不挂按钮。
-- 「添加」＝从本机选一张图，填名字、一句描述、标签、分组。
-- 「修改」不自动聚焦名字（手机上不弹键盘），多半只是来加标签的：**标签是一排药丸**——点已有的去掉，点「＋ 加标签」原地打字、回车接着加下一个（逗号也行），底下一排「用过的」是别的图已经在用的标签，点一下就加上。表单不会因为加了一个标签就关掉，保存 / 取消贴在抽屉底边。
+- 「添加」＝从本机选一张图，填名字、一句描述，点亮它该进的分组。
+- 「修改」不自动聚焦任何输入框（手机上不弹键盘），多半只是来改分组的：点药丸进组 / 出组，保存 / 取消贴在抽屉底边。
 - `index.json` 的格式见 `packages/stickers/index.schema.json`。
 - **库里放你自己的图。** 仓里只带了一张示例贴纸 `sample-bow.webp`（「蝴蝶结」）。网上收来的表情包版权不在你手里，请别随仓发布。
 
@@ -227,11 +230,11 @@ The old way still works: leave `panel` out and give `stickers.button` / `kaomoji
 
 ## Groups
 
-Stickers and kaomoji share one group system. Picking a group uses **pills drawn by the package** (no native select): "Ungrouped", every group, then "+ New group", which turns into an inline input. Editing an item can move it to another group. "…" → **Manage groups**: tap a name to rename, arrows to reorder, delete (its items become ungrouped, never deleted), add at the bottom. The drawer is split by group in your order, ungrouped last. Data: an ordered `groups: [{id, name, order}]` array; items store only `group` (an id, or `null`). Older files that stored group names are migrated on load, in the browser store too. Endpoints: `{api}/stickers/groups` and `{api}/kaomoji/groups` (see PROTOCOL). CLI: `sticker.py [kaomoji] groups [add NAME | rename ID NAME | rm ID | up ID | down ID]`.
+Stickers and kaomoji share one group system, and **groups are the only way to sort things — there are no separate tags**: one sticker (or kaomoji) can be in several groups. The add / edit form has three things: name, a one-line description, and group pills (kaomoji: the text itself + groups); editing focuses nothing, so phones don't raise the keyboard. The pills are **drawn by the package** (no native select): tap one to put the item in, tap again to take it out, several can be on, none on = ungrouped; "+ New group" turns into an inline input. The drawer is split by group in your order and an item shows up once in every group it's in, "Ungrouped" last. Search looks at the name, the description and group names (plus old names). "…" → **Manage groups**: tap a name to rename, arrows to reorder, delete (the group just comes off its items, nothing is deleted), add at the bottom. Data: an ordered `groups: [{id, name, order}]` array; items store `groups: [id, …]` (`[]` = ungrouped). Older files are upgraded on load, in the browser store too: a single `group` (id or name) and any `tags` are folded into `groups` — a tag with no group of that name gets a new one, after the existing groups — and neither is written back. Endpoints: `{api}/stickers/groups` and `{api}/kaomoji/groups`, items take `groups` (see PROTOCOL). CLI: `sticker.py [kaomoji] groups [add NAME | rename ID NAME | rm ID | up ID | down ID]`; items take `--groups a,b` (`--group` is an alias, `--groups ""` clears).
 
 ## Sticker shelf
 
-`packages/stickers/sticker.py` (`add / list / edit / desc / rm`, folder from `--dir` or `$STICKER_DIR`) and `serve.py` (list, image, add, edit, delete). Write `[[sticker:name]]` in a message (`[[表情:name]]` and `[[sticker:12]]` work too). Numbers are stable and never reused; **renaming keeps the old name in `aliases`** so old messages still show the picture. Add = pick a picture on this device + name, description, tags, group. The drawer's top bar is search + add + more; "…" → Organize (or long-press / right-click a cell) turns it into Edit · Delete. Cells only pick. Put **your own pictures** in the library: the repo ships one sample sticker, `sample-bow.webp`. Stickers collected from the internet aren't yours to publish.
+`packages/stickers/sticker.py` (`add / list / edit / desc / rm`, folder from `--dir` or `$STICKER_DIR`) and `serve.py` (list, image, add, edit, delete). Write `[[sticker:name]]` in a message (`[[表情:name]]` and `[[sticker:12]]` work too). Numbers are stable and never reused; **renaming keeps the old name in `aliases`** so old messages still show the picture. Add = pick a picture on this device + name, description, groups. The drawer's top bar is search + add + more; "…" → Organize (or long-press / right-click a cell) turns it into Edit · Delete. Cells only pick. Put **your own pictures** in the library: the repo ships one sample sticker, `sample-bow.webp`. Stickers collected from the internet aren't yours to publish.
 
 ## Kaomoji
 

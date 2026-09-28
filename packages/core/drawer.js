@@ -6,9 +6,10 @@
  *
  *   ChatDrawer.create({ button, anchor, title, store: { list, add, edit, remove }, cell, onPick, fields })
  *
- * Groups: if the store has `groups` ({list, add, rename, remove, reorder}), items carry a group id, the grid is split by
- * group in the user's order ("Ungrouped" last), forms get package-drawn group pills (plus "+ New group"), and
- * "…" gets "Manage groups" (new · rename · delete → items become ungrouped · move up / down).
+ * Groups are the only way to sort things (no separate tags). If the store has `groups` ({list, add, rename, remove, reorder}),
+ * items carry `groups: [id, …]` and can be in several; the grid is split by group in the user's order and an item shows
+ * up once in every group it's in ("Ungrouped" last); forms get package-drawn group pills — tap one to put the item in or
+ * take it out, "+ New group" turns into an inline input — and "…" gets "Manage groups" (new · rename · delete · move up / down).
  *
  * Needs core/press.js for long-press on cells (right-click works without it). Zero dependencies. CC BY-NC-SA 4.0.
  */
@@ -34,16 +35,14 @@
       back: "返回", loading: "在翻抽屉…", failed: "没读到，等会儿再试", empty: "还空着——点右上角的 ＋ 加第一个", noHit: "没搜到",
       pickOne: "点一格来修改或删除", confirmDel: function (n) { return "删掉「" + n + "」？"; },
       group: "分组", ungrouped: "未分组", newGroup: "新分组", groupPh: "分组名", manageGroups: "管理分组", addGroup: "添加",
-      addTag: "加标签", tagPh: "打完回车接着加", usedTags: "用过的", removeTag: function (t) { return "去掉标签「" + t + "」"; },
-      noGroups: "还没有分组——在下面起一个名字", up: "上移", down: "下移", rename: "点名字改名",
-      confirmDelGroup: function (n, c) { return "删掉分组「" + n + "」？" + (c ? "里面的 " + c + " 个会并入「未分组」。" : ""); } },
+      groupHint: "点一下进组，再点一下出组；可以进好几个", noGroups: "还没有分组——在下面起一个名字", up: "上移", down: "下移", rename: "点名字改名",
+      confirmDelGroup: function (n, c) { return "删掉分组「" + n + "」？" + (c ? "里面的 " + c + " 个只是离开这一组，不会被删。" : ""); } },
     en: { search: "Search", add: "Add", more: "More", organize: "Organize (pick one to edit or delete)", edit: "Edit", del: "Delete", cancel: "Cancel", save: "Save",
       back: "Back", loading: "Loading…", failed: "Couldn't load, try again later", empty: "Empty — tap + at the top to add the first one", noHit: "No match",
       pickOne: "Tap one to edit or delete", confirmDel: function (n) { return "Delete \"" + n + "\"?"; },
-      group: "Group", ungrouped: "Ungrouped", newGroup: "New group", groupPh: "Group name", manageGroups: "Manage groups", addGroup: "Add",
-      addTag: "Add tag", tagPh: "Enter adds another", usedTags: "Used", removeTag: function (t) { return "Remove tag \"" + t + "\""; },
-      noGroups: "No groups yet — name one below", up: "Move up", down: "Move down", rename: "Tap the name to rename",
-      confirmDelGroup: function (n, c) { return "Delete the group \"" + n + "\"?" + (c ? " Its " + c + " item(s) become ungrouped." : ""); } },
+      group: "Groups", ungrouped: "Ungrouped", newGroup: "New group", groupPh: "Group name", manageGroups: "Manage groups", addGroup: "Add",
+      groupHint: "Tap to put it in, tap again to take it out; it can be in several", noGroups: "No groups yet — name one below", up: "Move up", down: "Move down", rename: "Tap the name to rename",
+      confirmDelGroup: function (n, c) { return "Delete the group \"" + n + "\"?" + (c ? " Its " + c + " item(s) just leave this group; nothing is deleted." : ""); } },
   };
 
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
@@ -68,9 +67,14 @@
     var G = o.store && o.store.groups ? o.store.groups : null, groups = [];
     function nameOf(it) { return o.nameOf ? o.nameOf(it) : (it.name || it.text || ""); }
     function groupById(id) { return id == null || id === "" ? null : groups.find(function (g) { return String(g.id) === String(id); }) || null; }
+    /* the groups an item is in, in the user's order (an older server's single `group` still counts) */
+    function groupsOf(it) {
+      var ids = (Array.isArray(it.groups) ? it.groups : (it.group != null && it.group !== "" ? [it.group] : [])).map(String);
+      return groups.filter(function (g) { return ids.indexOf(String(g.id)) >= 0; });
+    }
     function groupName(it) {
       if (!G) return o.groupOf ? (o.groupOf(it) || "") : "";
-      var g = groupById(it.group); return g ? g.name : "";
+      return groupsOf(it).map(function (g) { return g.name; }).join(" · ");
     }
 
     var root = document.createElement("div");
@@ -109,7 +113,7 @@
 
     function matches(it) {
       if (!q) return true;
-      var hay = o.searchText ? o.searchText(it) : [it.name, it.desc, it.text, groupName(it)].concat(it.tags || [], it.aliases || []).join(" ");
+      var hay = o.searchText ? o.searchText(it) : [it.name, it.desc, it.text, groupName(it)].concat(it.aliases || []).join(" ");
       return String(hay).toLowerCase().indexOf(q.toLowerCase()) >= 0;
     }
 
@@ -121,16 +125,22 @@
       if (!items.length) { grid.innerHTML = '<p class="cd-note">' + esc(L.empty) + "</p>"; return; }
       if (!list.length) { grid.innerHTML = '<p class="cd-note">' + esc(L.noHit) + "</p>"; return; }
       var html = [], lastGroup = null, heads = G ? groups.length > 0 : !!o.groupOf;
-      if (G && heads) {                                // the user's group order, ungrouped last; inside a group, oldest first
-        var rank = {}; groups.forEach(function (g, i) { rank[g.id] = i; });
-        var r = function (it) { var g = groupById(it.group); return g ? rank[g.id] : 1e9; };
-        list = list.map(function (it, i) { return [it, i]; }).sort(function (a, b) { return (r(a[0]) - r(b[0])) || (a[1] - b[1]); }).map(function (x) { return x[0]; });
+      function cellHtml(it) {
+        var on = selected && selected.id === it.id;
+        return '<button type="button" class="cd-cell' + (on ? " on" : "") + '" data-id="' + esc(it.id) + '" title="' + esc(o.cellTitle ? o.cellTitle(it) : nameOf(it)) + '">' + o.cell(it) + "</button>";
       }
-      list.forEach(function (it) {
+      if (G && heads) {                                // the user's group order, "Ungrouped" last; an item shows up in every group it's in
+        var mine = list.map(function (it) { return groupsOf(it).map(function (g) { return String(g.id); }); });
+        groups.forEach(function (g) {
+          var cells = list.filter(function (it, i) { return mine[i].indexOf(String(g.id)) >= 0; });
+          if (cells.length) html.push('<h3 class="cd-group">' + esc(g.name) + "</h3>" + cells.map(cellHtml).join(""));
+        });
+        var loose = list.filter(function (it, i) { return !mine[i].length; });
+        if (loose.length) html.push('<h3 class="cd-group">' + esc(L.ungrouped) + "</h3>" + loose.map(cellHtml).join(""));
+      } else list.forEach(function (it) {
         var g = heads ? (groupName(it) || L.ungrouped) : null;
         if (g !== null && g !== lastGroup) { html.push('<h3 class="cd-group">' + esc(g) + "</h3>"); lastGroup = g; }
-        var on = selected && selected.id === it.id;
-        html.push('<button type="button" class="cd-cell' + (on ? " on" : "") + '" data-id="' + esc(it.id) + '" title="' + esc(o.cellTitle ? o.cellTitle(it) : nameOf(it)) + '">' + o.cell(it) + "</button>");
+        html.push(cellHtml(it));
       });
       grid.innerHTML = html.join("");
       grid.classList.toggle("selecting", selecting);
@@ -169,8 +179,9 @@
     }
     function back() { mode = "grid"; view.hidden = true; grid.hidden = false; view.innerHTML = ""; paintBars(); paint(); }
 
-    /* A tiny form from field specs: {key, label, type: text|textarea|tags|group|file, placeholder, required, max}.
-       tags = package-drawn chips (see tagger()); group = package-drawn pills. The Save row sticks to the bottom. */
+    /* A tiny form from field specs: {key, label, type: text|textarea|groups|file, placeholder, required, max}.
+       groups = package-drawn pills, several can be on (see pills(); "group" is the same field under its old name).
+       Submitting sends an array of group ids under that key. The Save row sticks to the bottom. */
     function form(fields, initial, submitLabel, onSubmit) {
       var f = document.createElement("form");
       f.className = "cd-form";
@@ -180,8 +191,7 @@
         var ctl;
         if (fd.type === "file") ctl = '<input type="file" name="' + fd.key + '" accept="' + esc(fd.accept || "image/png,image/jpeg,image/gif,image/webp") + '"' + req + '><img class="cd-preview" alt="" hidden>';
         else if (fd.type === "textarea") ctl = '<textarea name="' + fd.key + '" rows="2"' + ph + req + mx + ">" + esc(v) + "</textarea>";
-        else if (fd.type === "group") return G ? '<div class="cd-field"><span>' + esc(fd.label || L.group) + '</span><div data-pills="' + fd.key + '"></div></div>' : "";
-        else if (fd.type === "tags") return '<div class="cd-field"><span>' + esc(fd.label) + '</span><div data-tags="' + fd.key + '"></div></div>';
+        else if (fd.type === "groups" || fd.type === "group") return G ? '<div class="cd-field"><span>' + esc(fd.label || L.group) + '</span><div data-pills="' + fd.key + '"></div></div>' : "";
         else ctl = '<input type="text" name="' + fd.key + '" value="' + esc(v) + '"' + ph + req + mx + ">";
         return '<label class="cd-field"><span>' + esc(fd.label) + "</span>" + ctl + "</label>";
       }).join("") +
@@ -189,14 +199,8 @@
         '<div class="cd-row"><button type="submit" class="cd-btn cd-primary">' + esc(submitLabel) + '</button><button type="button" class="cd-btn" data-cd="back">' + esc(L.cancel) + "</button></div>";
       var pickers = {};
       f.querySelectorAll("[data-pills]").forEach(function (slot) {
-        var p = pills(initial ? initial[slot.dataset.pills] : (o.defaultGroup != null ? o.defaultGroup : null));
+        var p = pills(initial ? groupsOf(initial).map(function (g) { return g.id; }) : (o.defaultGroup != null ? o.defaultGroup : []));
         slot.replaceWith(p.el); pickers[slot.dataset.pills] = p;
-      });
-      var taggers = {};
-      f.querySelectorAll("[data-tags]").forEach(function (slot) {
-        var fd = fields.find(function (x) { return x.key === slot.dataset.tags; });
-        var t = tagger(initial ? initial[fd.key] : [], fd.placeholder);
-        slot.replaceWith(t.el); taggers[fd.key] = t;
       });
       var fileData = "";
       var file = f.querySelector("input[type=file]");
@@ -217,13 +221,12 @@
         var out = {};
         fields.forEach(function (fd) {
           if (fd.type === "file") out[fd.key] = fileData;
-          else if (fd.type === "group") { if (pickers[fd.key]) out[fd.key] = pickers[fd.key].value(); }
-          else if (fd.type === "tags") out[fd.key] = taggers[fd.key] ? taggers[fd.key].value() : [];
+          else if (fd.type === "groups" || fd.type === "group") { if (pickers[fd.key]) out[fd.key] = pickers[fd.key].value(); }
           else out[fd.key] = f.elements[fd.key].value.trim();
         });
         var sb = f.querySelector(".cd-primary"); sb.disabled = true;
         var keys = Object.keys(pickers);
-        Promise.all(keys.map(function (k) { return ensureGroup(out[k]); }))
+        Promise.all(keys.map(function (k) { return ensureGroups(out[k]); }))
           .then(function (ids) { keys.forEach(function (k, i) { out[k] = ids[i]; }); return onSubmit(out); })
           .then(function () { back(); unselect(); return reload(); })
           .catch(function (err) {
@@ -235,121 +238,74 @@
       return f;
     }
 
-    /* Tag chips drawn by the package — for tagging a shelf one item after another without typing much:
-       the item's tags (tap one = take it off), tags other items already use (tap one = put it on), and "+ Add tag",
-       which opens an inline input: Enter (or a comma) adds and keeps it open for the next one. Nothing here closes
-       the form. value() → [tags], including whatever is still typed in the input. */
-    function tagger(initial, ph) {
-      function clean(t) { return String(t == null ? "" : t).split(/\s+/).join(" ").trim(); }
-      var cur = [];
-      function put(t) { t = clean(t); if (t && cur.indexOf(t) < 0) cur.push(t); }
-      (Array.isArray(initial) ? initial : String(initial || "").split(/[,，]/)).forEach(put);
+    /* Group pills drawn by the package: every group in order, then "+ New group" (turns into an inline input).
+       Several can be on — tap one to put the item in, tap again to take it out; none on = ungrouped.
+       A new name typed in the input comes on right away and is only created on save (ensureGroups()).
+       initial: an array of group ids (or one id, or {id} / {name} values from another picker).
+       value() → [{id} | {name}, …], including a name still sitting in the input. */
+    function pills(initial, onChange) {
       var el = document.createElement("div");
-      el.className = "cd-tags";
-      el.innerHTML = '<div class="cd-pills"><span class="cd-tag-on"></span><span class="cd-tag-tail"></span></div><div class="cd-pills cd-tag-used" hidden></div>';
-      var on = el.querySelector(".cd-tag-on"), tail = el.querySelector(".cd-tag-tail"), used = el.querySelector(".cd-tag-used");
-      var inp = null;
-      function known() {                               // tags on the other items, most used first
-        var n = {};
-        (items || []).forEach(function (it) { (it.tags || []).forEach(function (t) { t = clean(t); if (t) n[t] = (n[t] || 0) + 1; }); });
-        return Object.keys(n).filter(function (t) { return cur.indexOf(t) < 0; })
-          .sort(function (a, b) { return (n[b] - n[a]) || a.localeCompare(b); }).slice(0, 16);
+      el.className = "cd-pills"; el.setAttribute("role", "group"); el.setAttribute("aria-label", L.group); el.title = L.groupHint;
+      var cur = [], fresh = [], inp = null;
+      function norm(v) {
+        if (v == null || v === "") return null;
+        if (typeof v === "object") return v.id != null ? (groupById(v.id) ? { id: groupById(v.id).id } : null) : (v.name ? { name: String(v.name) } : null);
+        return groupById(v) ? { id: groupById(v).id } : null;
       }
-      function draw() {
-        on.innerHTML = cur.map(function (t) {
-          return '<button type="button" class="cd-pill on cd-tag" data-rm="' + esc(t) + '" aria-label="' + esc(L.removeTag(t)) + '"><span>' + esc(t) + "</span>" + ICON.x + "</button>";
-        }).join("");
-        var k = known();
-        used.hidden = !k.length;
-        used.innerHTML = k.length ? '<span class="cd-tag-hint">' + esc(L.usedTags) + "</span>" +
-          k.map(function (t) { return '<button type="button" class="cd-pill cd-tag-s" data-put="' + esc(t) + '">' + esc(t) + "</button>"; }).join("") : "";
-      }
-      function drawTail() {
-        inp = null;
-        tail.innerHTML = '<button type="button" class="cd-pill cd-pill-new" data-new="1">' + ICON.plus + "<span>" + esc(L.addTag) + "</span></button>";
-      }
-      function take() { if (!inp) return; var parts = inp.value.split(/[,，]/); inp.value = ""; parts.forEach(put); draw(); }
-      function openInput() {
-        tail.innerHTML = '<span class="cd-pill-edit"><input type="text" maxlength="40" enterkeyhint="done" placeholder="' + esc(ph || L.tagPh) + '" aria-label="' + esc(L.addTag) +
-          '"><button type="button" aria-label="' + esc(L.addTag) + '">' + ICON.check + "</button></span>";
-        inp = tail.querySelector("input");
-        var me = inp;
-        inp.addEventListener("keydown", function (e) {
-          if (e.key === "Enter") { e.preventDefault(); if (me.value.trim()) take(); else drawTail(); }
-          else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); drawTail(); }
-        });
-        inp.addEventListener("input", function () {    // a comma typed or pasted = that tag is done
-          if (!/[,，]/.test(me.value)) return;
-          var parts = me.value.split(/[,，]/), rest = parts.pop();
-          parts.forEach(put); me.value = rest; draw();
-        });
-        inp.addEventListener("blur", function () {     // tapped somewhere else: keep what was typed, fold the input
-          setTimeout(function () { if (inp === me && document.activeElement !== me) { take(); drawTail(); } }, 150);
-        });
-        tail.querySelector("button").addEventListener("click", function () { take(); if (inp === me) me.focus(); });
-        me.focus();                                    // in the tap itself, or iOS won't raise the keyboard
-      }
-      el.addEventListener("click", function (e) {
-        if (e.target.closest(".cd-pill-new")) return openInput();
-        var b = e.target.closest("[data-rm]");
-        if (b) { var i = cur.indexOf(b.dataset.rm); if (i >= 0) cur.splice(i, 1); return draw(); }
-        b = e.target.closest("[data-put]");
-        if (b) { put(b.dataset.put); draw(); }
-      });
-      draw(); drawTail();
-      return { el: el, value: function () { if (inp && inp.value.trim()) take(); return cur.slice(); } };
-    }
-
-    /* Group pills drawn by the package: "Ungrouped", every group in order, then "+ New group" (turns into an inline input).
-       value() → null | {id} | {name} (a new name; ensureGroup() creates it on save). */
-    function pills(initialId, onChange) {             // initialId: a group id, or a value from another picker
-      var el = document.createElement("div");
-      el.className = "cd-pills"; el.setAttribute("role", "radiogroup"); el.setAttribute("aria-label", L.group);
-      var cur = null, fresh = [];
-      if (initialId && typeof initialId === "object") { cur = initialId; if (initialId.name != null) fresh.push(initialId.name); }
-      else if (groupById(initialId)) cur = { id: groupById(initialId).id };
-      function same(a, b) { return (!a && !b) || (a && b && (a.id != null ? String(a.id) === String(b.id) : a.name === b.name)); }
+      function same(a, b) { return a.id != null ? String(a.id) === String(b.id) : (b.id == null && a.name === b.name); }
+      function has(v) { return cur.some(function (x) { return same(x, v); }); }
+      function put(v) { if (v && !has(v)) cur.push(v); if (v && v.name != null && fresh.indexOf(v.name) < 0) fresh.push(v.name); }
+      (Array.isArray(initial) ? initial : [initial]).forEach(function (v) { put(norm(v)); });
       function pill(v, label) {
-        return '<button type="button" class="cd-pill' + (same(v, cur) ? " on" : "") + '" role="radio" aria-checked="' + (same(v, cur) ? "true" : "false") + '" data-v="' + esc(JSON.stringify(v)) + '">' + esc(label) + "</button>";
+        var on = has(v);
+        return '<button type="button" class="cd-pill' + (on ? " on" : "") + '" aria-pressed="' + (on ? "true" : "false") + '" data-v="' + esc(JSON.stringify(v)) + '">' + esc(label) + "</button>";
       }
       function draw() {
-        el.innerHTML = pill(null, L.ungrouped) +
-          groups.map(function (g) { return pill({ id: g.id }, g.name); }).join("") +
+        inp = null;
+        el.innerHTML = groups.map(function (g) { return pill({ id: g.id }, g.name); }).join("") +
           fresh.map(function (n) { return pill({ name: n }, n); }).join("") +
           '<button type="button" class="cd-pill cd-pill-new" data-new="1">' + ICON.plus + "<span>" + esc(L.newGroup) + "</span></button>";
       }
-      function set(v) { cur = v; draw(); if (onChange) onChange(cur); }
+      function changed() { draw(); if (onChange) onChange(cur.slice()); }
+      function take(n) {                               // a typed name: an existing group comes on, a new one is kept for save
+        n = String(n || "").split(/\s+/).join(" ").trim().slice(0, 20);
+        if (!n) return false;
+        var g = groups.find(function (x) { return x.name === n; });
+        put(g ? { id: g.id } : { name: n });
+        return true;
+      }
       function edit() {
         var nb = el.querySelector(".cd-pill-new");
         var box = document.createElement("span");
         box.className = "cd-pill-edit";
         box.innerHTML = '<input type="text" maxlength="20" enterkeyhint="done" placeholder="' + esc(L.groupPh) + '" aria-label="' + esc(L.newGroup) + '"><button type="button" aria-label="' + esc(L.save) + '">' + ICON.check + "</button>";
         nb.replaceWith(box);
-        var inp = box.querySelector("input"), done = false;
-        function commit() {
-          if (done) return; done = true;
-          var n = inp.value.split(/\s+/).join(" ").trim().slice(0, 20);
-          if (!n) return draw();
-          var g = groups.find(function (x) { return x.name === n; });
-          if (g) return set({ id: g.id });
-          if (fresh.indexOf(n) < 0) fresh.push(n);
-          set({ name: n });
-        }
-        inp.addEventListener("keydown", function (e) {
+        var me = box.querySelector("input");
+        inp = me;
+        function commit() { if (inp !== me) return; take(me.value); changed(); }
+        me.addEventListener("keydown", function (e) {
           if (e.key === "Enter") { e.preventDefault(); commit(); }
-          else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done = true; draw(); }
+          else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); draw(); }
         });
-        inp.addEventListener("blur", function () { setTimeout(commit, 120); });
+        me.addEventListener("blur", function () { setTimeout(function () { if (inp === me && document.activeElement !== me) commit(); }, 120); });
         box.querySelector("button").addEventListener("click", commit);
-        setTimeout(function () { inp.focus(); }, 20);
+        me.focus();                                    // in the tap itself, or iOS won't raise the keyboard
       }
       el.addEventListener("click", function (e) {
         if (e.target.closest(".cd-pill-new")) return edit();
         var b = e.target.closest(".cd-pill[data-v]");
-        if (b) set(JSON.parse(b.dataset.v));
+        if (!b) return;
+        if (inp && inp.value.trim()) take(inp.value);  // tapped a pill mid-typing: keep what was typed
+        var v = JSON.parse(b.dataset.v);
+        if (has(v)) cur = cur.filter(function (x) { return !same(x, v); }); else cur.push(v);
+        changed();
       });
       draw();
-      return { el: el, value: function () { return cur; }, set: set };
+      return {
+        el: el,
+        value: function () { if (inp && inp.value.trim()) { take(inp.value); inp.value = ""; } return cur.slice(); },
+        set: function (l) { cur = []; (Array.isArray(l) ? l : [l]).forEach(function (v) { put(norm(v)); }); changed(); },
+      };
     }
 
     /* null | {id} | {name} | id | name → a group id (creating the group if it's new), or null. */
@@ -366,6 +322,14 @@
         if (d) { groups.push(d); return d.id; }
         throw err;
       });
+    }
+    /* a pills() value (or one of anything ensureGroup takes) → [group id, …], new groups created one after another */
+    function ensureGroups(l) {
+      l = Array.isArray(l) ? l : (l == null || l === "" ? [] : [l]);
+      var out = [];
+      return l.reduce(function (p, v) {
+        return p.then(function () { return ensureGroup(v); }).then(function (id) { if (id != null && out.indexOf(id) < 0) out.push(id); });
+      }, Promise.resolve()).then(function () { return out; });
     }
 
     function refreshGroups() {
@@ -551,9 +515,9 @@
     var api = {
       root: root, open: open, close: close, toggle: toggle, reload: reload, paint: paint, reset: reset,
       loaded: function () { return items !== null || loading; },
-      showView: showView, back: back, form: form, tagger: tagger, select: select, unselect: unselect, flash: flash,
+      showView: showView, back: back, form: form, select: select, unselect: unselect, flash: flash,
       items: function () { return items || []; }, labels: L, esc: esc, icons: ICON,
-      groups: function () { return groups.slice(); }, groupName: groupName, pills: pills, ensureGroup: ensureGroup, refreshGroups: refreshGroups,
+      groups: function () { return groups.slice(); }, groupName: groupName, pills: pills, ensureGroup: ensureGroup, ensureGroups: ensureGroups, groupsOf: groupsOf, refreshGroups: refreshGroups,
     };
     if (!embed) all.push(api);
     paintBars();
@@ -570,23 +534,34 @@
     try { input.focus(); } catch (_) {}
   }
 
-  /* Groups kept next to the items: [{id, name, order}], items hold only the id. Older saves that stored group
-     names on the items are migrated (a group is created for each name). */
+  /* Groups kept next to the items: [{id, name, order}]; an item holds `groups: [id, …]` and can be in several.
+     Older saves are folded in (same as sticker.py's migrate_groups): a single `group` (id or name) and any `tags`
+     become groups — a name with no group yet gets one, after the existing ones — and `group` / `tags` are dropped. */
   function migrateGroups(m) {
     m.groups = (m.groups || []).filter(function (g) { return g && g.id != null && g.name; }).sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
     var next = m.groups.reduce(function (x, g) { return Math.max(x, (+g.id || 0) + 1); }, m.nextGroup || 1);
     (m.items || []).forEach(function (it) {
-      var v = it.group;
-      if (v == null || v === "") { it.group = null; return; }
-      if (typeof v === "number") { if (!m.groups.some(function (g) { return g.id === v; })) it.group = null; return; }
-      var name = String(v).trim(), g = m.groups.find(function (x) { return x.name === name; });
-      if (!g) { g = { id: next++, name: name, order: m.groups.length + 1 }; m.groups.push(g); }
-      it.group = g.id;
+      var raw = (Array.isArray(it.groups) ? it.groups.slice() : []).concat([it.group], Array.isArray(it.tags) ? it.tags : String(it.tags || "").split(/[,，]/));
+      var ids = [];
+      raw.forEach(function (v) {
+        if (v == null || v === "" || v === 0 || v === false || typeof v === "object") return;
+        var g;
+        if (typeof v === "number") g = m.groups.find(function (x) { return x.id === v; });
+        else {
+          var name = String(v).split(/\s+/).join(" ").trim().slice(0, 20);
+          if (!name) return;
+          g = m.groups.find(function (x) { return x.name === name; });
+          if (!g) { g = { id: next++, name: name, order: m.groups.length + 1 }; m.groups.push(g); }
+        }
+        if (g && ids.indexOf(g.id) < 0) ids.push(g.id);
+      });
+      it.groups = ids; delete it.group; delete it.tags;
     });
     m.groups.forEach(function (g, i) { g.order = i + 1; });
     m.nextGroup = next;
     return m;
   }
+  function inGroup(it, id) { return (it.groups || []).some(function (x) { return String(x) === String(id); }); }
 
   /* Store backed by localStorage, seeded from a JSON file — for demos and single-device use. Has groups. */
   function localStore(key, seedUrl, pickList, makeItem) {
@@ -612,7 +587,7 @@
     var groups = {
       list: function () {
         return load().then(function (m) {
-          return m.groups.map(function (g) { return Object.assign({}, g, { count: m.items.filter(function (it) { return String(it.group) === String(g.id); }).length }); });
+          return m.groups.map(function (g) { return Object.assign({}, g, { count: m.items.filter(function (it) { return inGroup(it, g.id); }).length }); });
         });
       },
       add: function (name) {
@@ -628,11 +603,11 @@
           g.name = name; persist(); return g;
         });
       },
-      remove: function (id) {                          // members become ungrouped
+      remove: function (id) {                          // it comes off its members
         return load().then(function (m) {
           m.groups = m.groups.filter(function (x) { return String(x.id) !== String(id); });
           m.groups.forEach(function (g, i) { g.order = i + 1; });
-          m.items.forEach(function (it) { if (String(it.group) === String(id)) it.group = null; });
+          m.items.forEach(function (it) { it.groups = (it.groups || []).filter(function (x) { return String(x) !== String(id); }); });
           persist();
         });
       },

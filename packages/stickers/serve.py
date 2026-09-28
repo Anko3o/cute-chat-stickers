@@ -3,24 +3,25 @@
 
   GET    /stickers?q=word          list / search                → {"stickers": [...], "groups": [...]}
   GET    /sticker/<name|id>        the image (old names in `aliases` still work)
-  POST   /stickers                 {name, desc?, tags?, group?, data: "data:image/png;base64,..."}
-  PUT    /stickers/<id>            {name?, desc?, tags?, group?}  renaming keeps the old name as an alias
+  POST   /stickers                 {name, desc?, groups?, data: "data:image/png;base64,..."}
+  PUT    /stickers/<id>            {name?, desc?, groups?}  renaming keeps the old name as an alias
   DELETE /stickers/<id>
 
   GET    /kaomoji?q=word           → {"kaomoji": [...], "groups": [...]}
-  POST   /kaomoji                  {text, group?}               409 {duplicate} if the same key exists
-  PUT    /kaomoji/<id>             {text?, group?}
+  POST   /kaomoji                  {text, groups?}              409 {duplicate} if the same key exists
+  PUT    /kaomoji/<id>             {text?, groups?}
   DELETE /kaomoji/<id>
   POST   /kaomoji/import/preview   {url}   → {url, fetched_at, found, candidates: [...]}   (only what's new)
-  POST   /kaomoji/import           {url, fetched_at, items: [{text, group}], offered: [...]}
+  POST   /kaomoji/import           {url, fetched_at, items: [{text, groups}], offered: [...]}
   GET    /kaomoji/sources          DELETE /kaomoji/sources?url=...
 
-  Groups, the same for both (<lib> = stickers | kaomoji); `group` on an item is a group id, or a name (created if new), or null:
+  Groups, the same for both (<lib> = stickers | kaomoji). `groups` on an item is a list of group ids (a name there is created
+  if new; [] = ungrouped; absent on PUT = keep). One item can be in several groups. Older clients' `group` / `tags` only add.
   GET    /<lib>/groups             → {"groups": [{id, name, order, count}]}
   POST   /<lib>/groups             {name}
   PUT    /<lib>/groups             {order: [id, id, ...]}
   PUT    /<lib>/groups/<id>        {name}
-  DELETE /<lib>/groups/<id>        its items become ungrouped
+  DELETE /<lib>/groups/<id>        it comes off its items (nothing else is deleted)
 
   STICKER_DIR=./stickers python3 serve.py [port]        (STICKER_READONLY=1 turns writes off)
 """
@@ -28,7 +29,7 @@ import base64, json, mimetypes, os, re, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import URLError
 from urllib.parse import parse_qs, unquote, urlparse
-from sticker import KEEP, DuplicateError, Kaomoji, Shelf, ShelfError, Sources, import_commit, import_preview
+from sticker import DuplicateError, Kaomoji, Shelf, ShelfError, Sources, body_groups, import_commit, import_preview
 
 shelf, km = Shelf(), Kaomoji()
 READONLY = os.environ.get("STICKER_READONLY") == "1"
@@ -41,11 +42,7 @@ def add_sticker(b):
     raw = base64.b64decode(m.group(2))
     if len(raw) > 8 * 1024 * 1024:
         raise ShelfError("image over 8 MB")
-    return shelf.add(raw, b.get("name"), b.get("desc", ""), b.get("tags"), ext=m.group(1), group=b.get("group"))
-
-
-def keep(b, k):
-    return b[k] if k in b else KEEP
+    return shelf.add(raw, b.get("name"), b.get("desc", ""), body_groups(b, None), ext=m.group(1))
 
 
 def group_routes(prefix, lib):
@@ -61,10 +58,10 @@ def group_routes(prefix, lib):
 # (method, path regex) → handler(match, body, query)
 ROUTES = group_routes("/stickers", shelf) + group_routes("/kaomoji", km) + [      # groups first: /stickers/groups ≠ /stickers/<id>
     ("POST", r"/stickers", lambda m, b, q: {"sticker": add_sticker(b)}),
-    ("PUT", r"/stickers/([^/]+)", lambda m, b, q: {"sticker": shelf.edit(m[1], name=b.get("name"), desc=b.get("desc"), tags=b.get("tags"), group=keep(b, "group"))}),
+    ("PUT", r"/stickers/([^/]+)", lambda m, b, q: {"sticker": shelf.edit(m[1], name=b.get("name"), desc=b.get("desc"), groups=body_groups(b))}),
     ("DELETE", r"/stickers/([^/]+)", lambda m, b, q: {"sticker": shelf.remove(m[1])}),
-    ("POST", r"/kaomoji", lambda m, b, q: {"kaomoji": km.add(b.get("text"), b.get("group"))}),
-    ("PUT", r"/kaomoji/(\d+)", lambda m, b, q: {"kaomoji": km.edit(m[1], text=b.get("text"), group=keep(b, "group"))}),
+    ("POST", r"/kaomoji", lambda m, b, q: {"kaomoji": km.add(b.get("text"), body_groups(b, None))}),
+    ("PUT", r"/kaomoji/(\d+)", lambda m, b, q: {"kaomoji": km.edit(m[1], text=b.get("text"), groups=body_groups(b))}),
     ("DELETE", r"/kaomoji/(\d+)", lambda m, b, q: {"kaomoji": km.remove(m[1])}),
     ("POST", r"/kaomoji/import/preview", lambda m, b, q: import_preview(km, b.get("url"))),
     ("POST", r"/kaomoji/import", lambda m, b, q: {"added": import_commit(km, b.get("url"), b.get("fetched_at"), b.get("items"), b.get("offered"))}),

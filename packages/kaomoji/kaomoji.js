@@ -1,8 +1,8 @@
 /*! chat-stickers · kaomoji.js — the kaomoji drawer, a separate little drawer next to the sticker one.
  * Tap = insert at the caret (never sends). Add / edit / delete from the top bar, same as stickers.
- * "…" → "Import from a web page": paste any kaomoji page, tick the ones you want, file them under a group.
+ * "…" → "Import from a web page": paste any kaomoji page, tick the ones you want, file them under groups.
  * Running it again on the same page (Sync) only offers what's new and never touches the ones you edited.
- * Groups are managed from "…" → "Manage groups"; items store only a group id.
+ * Groups are managed from "…" → "Manage groups"; an item stores `groups: [id, …]` and can be in several.
  *
  *   KaomojiBox.init({ button: "#kaomojiBtn", input: "#input", api: "" })
  *
@@ -21,7 +21,7 @@
       all: "全选", none: "全不选", keep: "存进来", sync: "同步", del: "删除", noSources: "还没从网页导入过",
       lastFetched: "上次", confirmDelSource: "删掉这个来源？已经存进来的颜文字不动。",
       had: "已有", dupe: "添加失败···ᴛ ω ᴛ已经有类似的啦" },
-    en: { title: "Kaomoji", text: "Kaomoji", textPh: "૮₍ ｡• ̫ •｡ ₎ა", group: "Group",
+    en: { title: "Kaomoji", text: "Kaomoji", textPh: "૮₍ ｡• ̫ •｡ ₎ა", group: "Groups",
       importWeb: "Import from a web page", sources: "Import sources (sync · delete)", url: "Page URL", urlPh: "https://… any kaomoji page", fetch: "Fetch",
       fetching: "Fetching…", found: function (n, m) { return n + " new (" + m + " recognised on the page; ones you have are greyed out)"; }, nothingNew: "Nothing new",
       all: "All", none: "None", keep: "Keep these", sync: "Sync", del: "Delete", noSources: "Nothing imported yet",
@@ -83,8 +83,8 @@
     var call = global.ChatDrawer.http(headers);
     return {
       list: function () { return call("GET", api + "/kaomoji").then(function (d) { return d.kaomoji || []; }); },
-      add: function (v) { return call("POST", api + "/kaomoji", { text: v.text, group: v.group }).catch(dupe); },
-      edit: function (it, v) { return call("PUT", api + "/kaomoji/" + it.id, { text: v.text, group: v.group }).catch(dupe); },
+      add: function (v) { return call("POST", api + "/kaomoji", { text: v.text, groups: v.groups }).catch(dupe); },
+      edit: function (it, v) { return call("PUT", api + "/kaomoji/" + it.id, { text: v.text, groups: v.groups }).catch(dupe); },
       remove: function (it) { return call("DELETE", api + "/kaomoji/" + it.id); },
       groups: global.ChatDrawer.httpGroups(call, api + "/kaomoji"),
       preview: function (url) { return call("POST", api + "/kaomoji/import/preview", { url: url }); },
@@ -98,7 +98,7 @@
     var SRC = "kaomoji_sources_v1";
     var s = global.ChatDrawer.localStore("kaomoji_box_v1", seedUrl,
       function (d) { return (d.kaomoji || []).map(function (k) { return Object.assign({}, k, { key: keyOf(k.text) }); }); },
-      function (v, id) { return { id: id, text: v.text, key: keyOf(v.text), group: v.group == null ? null : v.group }; });
+      function (v, id) { return { id: id, text: v.text, key: keyOf(v.text), groups: v.groups || [] }; });
     function srcs() { try { return JSON.parse(localStorage.getItem(SRC) || "[]"); } catch (_) { return []; } }
     function saveSrcs(l) { try { localStorage.setItem(SRC, JSON.stringify(l)); } catch (_) {} }
     function clash(m, text, but) {
@@ -112,7 +112,9 @@
       return s._all().then(function (m) {
         var self = m.items.find(function (x) { return x.id === it.id; });
         var e = clash(m, v.text, self); if (e) throw e;
-        return edit(it, { text: v.text, group: v.group, key: keyOf(v.text) });
+        var patch = { text: v.text, key: keyOf(v.text) };
+        if ("groups" in v) patch.groups = v.groups;
+        return edit(it, patch);
       });
     };
     s.preview = function (url) {
@@ -143,7 +145,7 @@
         (p.items || []).forEach(function (it) {
           var k = keyOf(it.text);
           if (have.has(k)) return;
-          m.items.push({ id: m.next++, text: it.text, key: k, group: it.group == null ? null : it.group, source: { url: p.url, fetched_at: p.fetched_at } });
+          m.items.push({ id: m.next++, text: it.text, key: k, groups: it.groups || [], source: { url: p.url, fetched_at: p.fetched_at } });
           have.add(k);
         });
         s._persist();
@@ -163,7 +165,7 @@
 
   function el(html) { var d = document.createElement("div"); d.innerHTML = html; return d; }
 
-  /* Step 1: URL. Step 2: tick candidates, pick a group, keep. */
+  /* Step 1: URL. Step 2: tick candidates, pick groups (any number), keep. */
   function importView(prefill) {
     var esc = global.ChatDrawer.esc;
     var node = el('<form class="cd-form kb-import"><label class="cd-field"><span>' + esc(T.url) + '</span><input type="url" name="url" required placeholder="' + esc(T.urlPh) + '" value="' + esc(prefill || "") + '"></label>' +
@@ -207,8 +209,8 @@
     f.addEventListener("submit", function (e) {
       e.preventDefault();
       var sb = f.querySelector(".cd-primary"); if (sb) sb.disabled = true;
-      drawer.ensureGroup(picker.value()).then(function (group) {
-        var items = Array.from(f.querySelectorAll('input[name="c"]:checked')).map(function (x) { return { text: c[+x.value].text, group: group }; });
+      drawer.ensureGroups(picker.value()).then(function (groups) {
+        var items = Array.from(f.querySelectorAll('input[name="c"]:checked')).map(function (x) { return { text: c[+x.value].text, groups: groups }; });
         return store.commit({ url: pv.url, fetched_at: pv.fetched_at, items: items, offered: c.map(function (x) { return x.text; }) });
       })
         .then(function () { drawer.back(); return drawer.reload(); })
@@ -241,7 +243,7 @@
     store = o.store || (o.api != null ? httpStore(o.api, o.headers) : localStore(o.seedUrl || null));
     var fields = [
       { key: "text", label: T.text, placeholder: T.textPh, required: true, max: 80 },
-      { key: "group", label: T.group, type: "group" },
+      { key: "groups", label: T.group, type: "groups" },
     ];
     drawer = global.ChatDrawer.create({
       kind: "kaomoji", button: o.button, anchor: o.anchor, embed: o.embed, host: o.host, title: T.title, store: store, lang: lang, labels: o.drawerLabels,

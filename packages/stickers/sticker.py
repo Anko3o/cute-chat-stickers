@@ -3,33 +3,37 @@
 """sticker-shelf — a tiny sticker library for chat pages (CLI + importable module).
 
 Images live in one folder next to an index.json that gives every sticker a stable
-number, a name, a one-line description, tags and a group. In chat text you write
+number, a name, a one-line description and the groups it's in. In chat text you write
 [[sticker:name]] (or [[表情:name]] / [[sticker:12]]) and the page renders the image.
 
 Folder: --dir PATH, or $STICKER_DIR, or ./stickers
 
-  sticker.py add  <image> <name> ["description"] [tag,tag] [--group G] [--owner WHO]
-  sticker.py list [keyword]                 search name / description / tags / aliases / group
-  sticker.py edit <name|id> [--name NEW] [--desc TEXT] [--tags a,b] [--group G]
+  sticker.py add  <image> <name> ["description"] [--groups a,b] [--owner WHO]
+  sticker.py list [keyword]                 search name / description / old names / group names
+  sticker.py edit <name|id> [--name NEW] [--desc TEXT] [--groups a,b]      (--groups "" = ungrouped)
   sticker.py desc <name|id> "new description"
   sticker.py rm   <name|id>
   sticker.py groups [add NAME | rename ID NAME | rm ID | up ID | down ID]
 
   sticker.py kaomoji list [keyword]
-  sticker.py kaomoji add  "<text>" [group]
-  sticker.py kaomoji edit <id> [--text T] [--group G]
+  sticker.py kaomoji add  "<text>" [a,b]
+  sticker.py kaomoji edit <id> [--text T] [--groups a,b]
   sticker.py kaomoji rm   <id>
-  sticker.py kaomoji import <url> [--group G] [--all]    fetch a public page, list new candidates
+  sticker.py kaomoji import <url> [--groups a,b] [--all]  fetch a public page, list new candidates
                                                          (--all adds them); run again later = sync
   sticker.py kaomoji sources [rm <url>]
   sticker.py kaomoji groups [add NAME | rename ID NAME | rm ID | up ID | down ID]
 
+`--group` is an alias of `--groups`; a group is an id or a name (a new name creates the group).
+
 Kaomoji live in <folder>/kaomoji.json; the first run copies the built-in set that ships
 in packages/kaomoji/kaomoji.json.
 
-Groups are an ordered list ({id, name, order}); each sticker / kaomoji stores only a group id
-(null = ungrouped). Deleting a group moves its members to "ungrouped". Old files that stored
-group names are migrated on load.
+Groups are the only way to sort things: an ordered list ({id, name, order}); each sticker /
+kaomoji stores `groups`, a list of group ids ([] = ungrouped), so one item can be in several.
+Deleting a group takes it off its members. Older files are migrated on load: a single `group`
+(id or name) and any `tags` become entries in `groups` (a tag with no group of that name gets a
+new group, after the existing ones).
 
 Renaming keeps the old name in `aliases`, so old messages that say [[sticker:old]]
 still find the picture. Numbers are never reused.
@@ -96,10 +100,11 @@ def _save_json(path, d):
     os.replace(tmp, path)                            # readers never see a half-written file
 
 
-# ── groups: an ordered list, items keep only the id ──
+# ── groups: an ordered list; an item keeps a list of ids and can be in several ──
 def migrate_groups(d, items_key):
-    """Normalise d["groups"] to [{id, name, order}] and make every item's "group" an id or None.
-    Items that still carry a group *name* (older files) get a group created for it."""
+    """Normalise d["groups"] to [{id, name, order}] and give every item "groups": [id, ...].
+    Older files are folded in: the single "group" (an id, or a name) and "tags" (names) both become
+    groups; a name with no group yet gets one, after the existing groups. "group" / "tags" are dropped."""
     clean = []
     for i, g in enumerate(d.get("groups") or []):
         if isinstance(g, dict) and isinstance(g.get("id"), int) and str(g.get("name") or "").strip():
@@ -109,20 +114,29 @@ def migrate_groups(d, items_key):
     by_name = {g["name"]: g for g in clean}
     nxt = max([d.get("next_group_id", 1)] + [g["id"] + 1 for g in clean])
     for it in d.get(items_key, []):
-        v = it.get("group")
-        if v in (None, "", 0) or v is False:
-            it["group"] = None
-            continue
-        if isinstance(v, int) and v in by_id:
-            continue
-        name = str(v).strip()
-        g = by_name.get(name)
-        if not g:
-            g = {"id": nxt, "name": name, "order": len(clean) + 1}
-            nxt += 1
-            clean.append(g)
-            by_name[name], by_id[g["id"]] = g, g
-        it["group"] = g["id"]
+        raw = list(it["groups"]) if isinstance(it.get("groups"), list) else []
+        raw.append(it.pop("group", None))
+        raw += clean_tags(it.pop("tags", None))
+        ids = []
+        for v in raw:
+            if v in (None, "", 0) or v is False or isinstance(v, (dict, list)):
+                continue
+            if isinstance(v, int):
+                if v in by_id and v not in ids:
+                    ids.append(v)
+                continue                             # an id nobody has any more: drop it
+            name = " ".join(str(v).split())[:20]
+            if not name:
+                continue
+            g = by_name.get(name)
+            if not g:
+                g = {"id": nxt, "name": name, "order": len(clean) + 1}
+                nxt += 1
+                clean.append(g)
+                by_name[name], by_id[g["id"]] = g, g
+            if g["id"] not in ids:
+                ids.append(g["id"])
+        it["groups"] = ids
     for i, g in enumerate(clean):
         g["order"] = i + 1
     d["groups"], d["next_group_id"] = clean, nxt
@@ -158,6 +172,43 @@ def resolve_group(d, v, create=True):
     return g["id"]
 
 
+def resolve_groups(d, v, create=True):
+    """A list of groups (ids and / or names), or one, or "a,b" → a list of ids without repeats.
+    None / "" / [] → [] (ungrouped). New names are created (create=True)."""
+    if v is None or v == "" or v is False:
+        return []
+    if isinstance(v, str):
+        v = [x for x in re.split(r"[,，]", v) if x.strip()]
+    elif not isinstance(v, (list, tuple)):
+        v = [v]
+    out = []
+    for x in v:
+        gid = resolve_group(d, x, create)
+        if gid is not None and gid not in out:
+            out.append(gid)
+    return out
+
+
+def body_groups(b, absent=KEEP):
+    """The groups a request body asks for: `groups` (a list, or "a,b"; [] = ungrouped). Clients from before
+    groups-only may still send `group` / `tags`; those only ever add — ("+", [...]) — so an old page can't
+    ungroup anything by accident. Neither present → `absent` (KEEP on edit, None on add)."""
+    if not isinstance(b, dict):
+        return absent
+    if "groups" in b:
+        return b.get("groups") or []
+    if "group" in b or "tags" in b:
+        return ("+", [b.get("group")] + clean_tags(b.get("tags")))
+    return absent
+
+
+def _apply_groups(d, cur, v):
+    """New group ids for an item that has `cur`: v is a list / name / id, or ("+", extra) = add to cur."""
+    if isinstance(v, tuple) and len(v) == 2 and v[0] == "+":
+        return resolve_groups(d, list(cur or []) + [x for x in v[1] if x not in (None, "")])
+    return resolve_groups(d, v)
+
+
 class Groups:
     """Manage the groups of one library (a Shelf or a Kaomoji)."""
 
@@ -168,7 +219,8 @@ class Groups:
         d = self.lib.load()
         counts = {}
         for it in d[self.items_key]:
-            counts[it.get("group")] = counts.get(it.get("group"), 0) + 1
+            for gid in it.get("groups", []):
+                counts[gid] = counts.get(gid, 0) + 1
         return [dict(g, count=counts.get(g["id"], 0)) for g in d["groups"]]
 
     def _get(self, d, gid):
@@ -200,12 +252,11 @@ class Groups:
         return g
 
     def remove(self, gid):
-        """Delete a group; its members become ungrouped."""
+        """Delete a group; it comes off its members (ones in no other group become ungrouped)."""
         d = self.lib.load()
         g = self._get(d, gid)
         for it in d[self.items_key]:
-            if it.get("group") == g["id"]:
-                it["group"] = None
+            it["groups"] = [x for x in it.get("groups", []) if x != g["id"]]
         d["groups"].remove(g)
         for i, x in enumerate(d["groups"]):
             x["order"] = i + 1
@@ -235,6 +286,12 @@ def _group_label(d, gid):
     return next((g["name"] for g in d["groups"] if g["id"] == gid), "")
 
 
+def group_names(d, it):
+    """Names of the groups an item is in, in the user's group order."""
+    ids = set(it.get("groups") or [])
+    return [g["name"] for g in d["groups"] if g["id"] in ids]
+
+
 class Shelf:
     ITEMS = "stickers"
 
@@ -259,7 +316,6 @@ class Shelf:
                 s["id"] = nxt
                 nxt += 1
             s.setdefault("desc", "")
-            s.setdefault("tags", [])
             s.setdefault("aliases", [])
         d["next_id"] = nxt
         return migrate_groups(d, "stickers")
@@ -287,7 +343,7 @@ class Shelf:
         d = self.load()
         out = []
         for s in d["stickers"]:
-            hay = [s["name"], s.get("desc", ""), _group_label(d, s.get("group"))] + s.get("tags", []) + s.get("aliases", [])
+            hay = [s["name"], s.get("desc", "")] + group_names(d, s) + s.get("aliases", [])
             if not q or any(q in str(h).lower() for h in hay):
                 out.append(s)
         return sorted(out, key=lambda s: s["id"])
@@ -310,8 +366,9 @@ class Shelf:
     def _taken(self, d, name, but=None):
         return any(s is not but and (s["name"] == name or name in s.get("aliases", [])) for s in d["stickers"])
 
-    def add(self, src, name, desc="", tags=None, owner=None, ext=None, group=None):
-        """src is a file path, or raw bytes together with ext. Same name again = replace the picture."""
+    def add(self, src, name, desc="", groups=None, owner=None, ext=None, group=None, tags=None):
+        """src is a file path, or raw bytes together with ext. Same name again = replace the picture.
+        groups: ids and / or names (new names become groups). `group` / `tags` are the older spellings, folded in."""
         name = clean_name(name)
         if isinstance(src, (bytes, bytearray)):
             raw, ext = bytes(src), (ext or "").lower().lstrip(".")
@@ -328,12 +385,14 @@ class Shelf:
         old = self.find(d, name)
         if old and old["name"] != name:
             raise ShelfError("'%s' is already an alias of #%d" % (name, old["id"]))
-        gid = resolve_group(d, group)
+        if isinstance(groups, tuple):                # body_groups() of an older client: ("+", [...])
+            groups = groups[1]
+        gids = resolve_groups(d, resolve_groups(d, groups) + [group] + clean_tags(tags))
         os.makedirs(self.dir, exist_ok=True)
         with open(os.path.join(self.dir, name + "." + ext), "wb") as f:
             f.write(raw)
         rec = {"id": old["id"] if old else d["next_id"], "name": name, "file": name + "." + ext,
-               "desc": str(desc or ""), "tags": clean_tags(tags), "group": gid,
+               "desc": str(desc or ""), "groups": gids,
                "aliases": old.get("aliases", []) if old else []}
         if owner:
             rec["owner"] = str(owner)
@@ -347,7 +406,8 @@ class Shelf:
         self.save(d)
         return rec
 
-    def edit(self, key, name=None, desc=None, tags=None, group=KEEP):
+    def edit(self, key, name=None, desc=None, groups=KEEP, group=KEEP, tags=None):
+        """groups: the new list (ids / names; [] = ungrouped), or KEEP. `group` / `tags` (older callers) only add."""
         d = self.load()
         s = self.find(d, key)
         if not s:
@@ -364,10 +424,10 @@ class Shelf:
             s["name"], s["file"] = new, new + "." + ext
         if desc is not None:
             s["desc"] = str(desc)
-        if tags is not None:
-            s["tags"] = clean_tags(tags)
-        if group is not KEEP:
-            s["group"] = resolve_group(d, group)
+        if groups is KEEP and (group is not KEEP or tags is not None):
+            groups = ("+", [None if group is KEEP else group] + clean_tags(tags))
+        if groups is not KEEP:
+            s["groups"] = _apply_groups(d, s.get("groups"), groups)
         self.save(d)
         return s
 
@@ -423,7 +483,7 @@ class Kaomoji:
     def search(self, q=""):
         q = str(q or "").strip().lower()
         d = self.load()
-        return [k for k in d["kaomoji"] if not q or q in k["text"].lower() or q in _group_label(d, k.get("group")).lower()]
+        return [k for k in d["kaomoji"] if not q or q in k["text"].lower() or any(q in n.lower() for n in group_names(d, k))]
 
     def _find(self, d, kid):
         k = next((k for k in d["kaomoji"] if str(k["id"]) == str(kid).strip()), None)
@@ -435,19 +495,22 @@ class Kaomoji:
     def _dupe(d, key, but=None):
         return next((k for k in d["kaomoji"] if k is not but and k.get("key") == key), None)
 
-    def add(self, text, group=None):
+    def add(self, text, groups=None, group=None):
         d = self.load()
         text = self._text(text)
         old = self._dupe(d, kaomoji_key(text))
         if old:
             raise DuplicateError("already have it: #%d %s" % (old["id"], old["text"]), old)
-        k = {"id": d["next_id"], "text": text, "key": kaomoji_key(text), "group": resolve_group(d, group)}
+        if isinstance(groups, tuple):                # body_groups() of an older client: ("+", [...])
+            groups = groups[1]
+        k = {"id": d["next_id"], "text": text, "key": kaomoji_key(text), "groups": resolve_groups(d, resolve_groups(d, groups) + [group])}
         d["kaomoji"].append(k)
         d["next_id"] += 1
         self.save(d)
         return k
 
-    def edit(self, kid, text=None, group=KEEP):
+    def edit(self, kid, text=None, groups=KEEP, group=KEEP):
+        """groups: the new list (ids / names; [] = ungrouped), or KEEP. `group` (older callers) only adds."""
         d = self.load()
         k = self._find(d, kid)
         if text is not None:
@@ -456,8 +519,10 @@ class Kaomoji:
             if old:
                 raise DuplicateError("already have it: #%d %s" % (old["id"], old["text"]), old)
             k["text"], k["key"] = text, kaomoji_key(text)
-        if group is not KEEP:
-            k["group"] = resolve_group(d, group)
+        if groups is KEEP and group is not KEEP:
+            groups = ("+", [group])
+        if groups is not KEEP:
+            k["groups"] = _apply_groups(d, k.get("groups"), groups)
         self.save(d)
         return k
 
@@ -687,7 +752,7 @@ def import_preview(km, url):
 
 
 def import_commit(km, url, fetched_at, items, offered):
-    """items: [{text, group}] she ticked (group = id or name); offered: every candidate she was shown
+    """items: [{text, groups}] she ticked (groups = ids / names; an older `group` is folded in); offered: every candidate she was shown
     (so a sync won't offer them again). Anything whose key is already there is skipped, never overwritten."""
     d = km.load()
     have = {k["key"] for k in d["kaomoji"]}
@@ -698,7 +763,7 @@ def import_commit(km, url, fetched_at, items, offered):
         if key in have:
             continue
         k = {"id": d["next_id"], "text": text, "key": key,
-             "group": resolve_group(d, it.get("group") if isinstance(it, dict) else None),
+             "groups": resolve_groups(d, resolve_groups(d, it.get("groups")) + [it.get("group")]) if isinstance(it, dict) else [],
              "source": {"url": url, "fetched_at": fetched_at}}
         d["kaomoji"].append(k)
         d["next_id"] += 1
@@ -720,6 +785,14 @@ def _pop(argv, flag):
         del argv[i:i + 2]
         return v
     return None
+
+
+def _pop_groups(argv):
+    """--groups a,b (or its alias --group) → "a,b" ("" = ungrouped), or None when not given."""
+    if "--tags" in argv:
+        raise ShelfError("tags are groups now: use --groups a,b")
+    got = [v for v in (_pop(argv, f) for f in ("--groups", "--group")) if v is not None]
+    return ",".join(v for v in got if v.strip()) if got else None
 
 
 def groups_cli(lib, args):
@@ -748,27 +821,28 @@ def kaomoji_cli(km, args):
         d = km.load()
         hits = km.search(args[0] if args else "")
         for k in hits:
-            print("#%-3d %-8s %s" % (k["id"], _group_label(d, k.get("group")), k["text"]))
+            print("#%-3d %-10s %s" % (k["id"], ",".join(group_names(d, k)), k["text"]))
         print("-- %d kaomoji in %s" % (len(hits), km.path))
     elif sub == "add":
         try:
-            k = km.add(args[0], args[1] if len(args) > 1 else None)
+            groups = _pop_groups(args)
+            k = km.add(args[0], groups if groups is not None else (args[1] if len(args) > 1 else None))
         except DuplicateError as e:
             raise ShelfError("添加失败···ᴛ ω ᴛ已经有类似的啦\n  #%d %s" % (e.item["id"], e.item["text"]))
         print("added #%d %s" % (k["id"], k["text"]))
     elif sub == "edit":
-        text, group = _pop(args, "--text"), _pop(args, "--group")
-        if text is None and group is None:
-            raise ShelfError("kaomoji edit needs --text or --group")
-        k = km.edit(args[0], text=text, group=KEEP if group is None else group)
-        print("#%d %s  %s" % (k["id"], _group_label(km.load(), k.get("group")), k["text"]))
+        text, groups = _pop(args, "--text"), _pop_groups(args)
+        if text is None and groups is None:
+            raise ShelfError("kaomoji edit needs --text or --groups")
+        k = km.edit(args[0], text=text, groups=KEEP if groups is None else groups)
+        print("#%d %s  %s" % (k["id"], ",".join(group_names(km.load(), k)), k["text"]))
     elif sub == "rm":
         k = km.remove(args[0])
         print("removed #%d %s" % (k["id"], k["text"]))
     elif sub == "groups":
         groups_cli(km, args)
     elif sub == "import":
-        group, take_all = _pop(args, "--group"), "--all" in args
+        groups, take_all = _pop_groups(args), "--all" in args
         args = [a for a in args if a != "--all"]
         pv = import_preview(km, args[0])
         for c in pv["candidates"]:
@@ -776,7 +850,7 @@ def kaomoji_cli(km, args):
         print("-- %d new of %d found on the page" % (pv["new"], pv["found"]))
         if take_all:
             new = [c for c in pv["candidates"] if not c["exists"]]
-            added = import_commit(km, pv["url"], pv["fetched_at"], [{"text": c["text"], "group": group} for c in new],
+            added = import_commit(km, pv["url"], pv["fetched_at"], [{"text": c["text"], "groups": groups} for c in new],
                                   [c["text"] for c in pv["candidates"]])
             print("added %d" % len(added))
         else:
@@ -799,29 +873,28 @@ def main(argv):
         sys.exit(__doc__)
     cmd, args = argv[0], argv[1:]
     if cmd == "add":
-        owner, group = _pop(args, "--owner"), _pop(args, "--group")
-        rec = shelf.add(args[0], args[1], args[2] if len(args) > 2 else "",
-                        args[3] if len(args) > 3 else None, owner, group=group)
+        owner, groups = _pop(args, "--owner"), _pop_groups(args)
+        if groups is None and len(args) > 3:         # older scripts: a 4th "a,b" (tags back then) = groups
+            groups = args[3]
+        rec = shelf.add(args[0], args[1], args[2] if len(args) > 2 else "", groups, owner)
         print("added #%d %s   use: [[sticker:%s]]  or  [[sticker:%d]]" % (rec["id"], rec["name"], rec["name"], rec["id"]))
     elif cmd in ("list", "ls"):
         d = shelf.load()
         hits = shelf.search(args[0] if args else "")
         for s in hits:
             line = "#%-3d [[sticker:%s]]  %s" % (s["id"], s["name"], s["desc"] or "(no description)")
-            if s.get("group"):
-                line += "   [" + _group_label(d, s["group"]) + "]"
-            if s["tags"]:
-                line += "   #" + " #".join(s["tags"])
+            if s.get("groups"):
+                line += "   [" + " · ".join(group_names(d, s)) + "]"
             if s["aliases"]:
                 line += "   (was: " + ", ".join(s["aliases"]) + ")"
             print(line)
         print("-- %d sticker(s) in %s" % (len(hits), shelf.dir))
     elif cmd == "edit":
-        name, desc, tags, group = _pop(args, "--name"), _pop(args, "--desc"), _pop(args, "--tags"), _pop(args, "--group")
-        if name is None and desc is None and tags is None and group is None:
-            raise ShelfError("edit needs --name, --desc, --tags or --group")
-        s = shelf.edit(args[0], name=name, desc=desc, tags=tags, group=KEEP if group is None else group)
-        print("#%d %s  %s  %s" % (s["id"], s["name"], s["desc"], ",".join(s["tags"])))
+        name, desc, groups = _pop(args, "--name"), _pop(args, "--desc"), _pop_groups(args)
+        if name is None and desc is None and groups is None:
+            raise ShelfError("edit needs --name, --desc or --groups")
+        s = shelf.edit(args[0], name=name, desc=desc, groups=KEEP if groups is None else groups)
+        print("#%d %s  %s  [%s]" % (s["id"], s["name"], s["desc"], " · ".join(group_names(shelf.load(), s))))
     elif cmd == "desc":
         s = shelf.edit(args[0], desc=args[1])
         print("#%d %s -> %s" % (s["id"], s["name"], s["desc"]))

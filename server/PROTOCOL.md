@@ -49,14 +49,14 @@ Validate that `emoji` is one short emoji (the reference rejects ASCII letters/di
 
 | | | |
 |---|---|---|
-| `GET /stickers?q=` | → `{"stickers": [Sticker…], "groups": [Group…]}` | searches name, description, tags, aliases, group name |
+| `GET /stickers?q=` | → `{"stickers": [Sticker…], "groups": [Group…]}` | searches name, description, aliases, group names |
 | `GET /sticker/<name \| alias \| id>` | → the image | old names keep working after a rename |
-| `POST /stickers` | `{"name", "desc"?, "tags"?, "group"?, "data": "data:image/png;base64,…"}` → `{"ok": true, "sticker"}` | png / jpg / gif / webp, ≤ 8 MB |
-| `PUT /stickers/<id \| name>` | `{"name"?, "desc"?, "tags"?, "group"?}` → `{"ok": true, "sticker"}` | renaming renames the file and appends the old name to `aliases`; `group` present = move (`null` = ungrouped), absent = keep |
+| `POST /stickers` | `{"name", "desc"?, "groups"?, "data": "data:image/png;base64,…"}` → `{"ok": true, "sticker"}` | png / jpg / gif / webp, ≤ 8 MB |
+| `PUT /stickers/<id \| name>` | `{"name"?, "desc"?, "groups"?}` → `{"ok": true, "sticker"}` | renaming renames the file and appends the old name to `aliases`; `groups` present = the new list (`[]` = ungrouped), absent = keep |
 | `DELETE /stickers/<id \| name>` | → `{"ok": true, "sticker"}` | |
 
 ```json
-{"id": 1, "name": "蝴蝶结", "file": "sample-bow.webp", "desc": "…", "tags": ["示例"], "aliases": [], "group": null, "owner": "a"}
+{"id": 1, "name": "蝴蝶结", "file": "sample-bow.webp", "desc": "…", "aliases": [], "groups": [2, 5], "owner": "a"}
 ```
 
 `id` is stable and never reused. Names: 1–40 chars, none of `/ \ . : [ ] < > " ' &`. Schema: `packages/stickers/index.schema.json`.
@@ -67,12 +67,12 @@ Validate that `emoji` is one short emoji (the reference rejects ASCII letters/di
 
 | | | |
 |---|---|---|
-| `GET /kaomoji?q=` | → `{"kaomoji": [{"id", "text", "key", "group", "source"?}…], "groups": [Group…]}` | searches text and group name |
-| `POST /kaomoji` | `{"text", "group"?}` | one line, ≤ 80 chars; same `key` already there → **409** `{"ok": false, "error", "duplicate": {…the existing one…}}` |
-| `PUT /kaomoji/<id>` | `{"text"?, "group"?}` | same 409 if the new text's `key` belongs to another one; `group` present = move, absent = keep |
+| `GET /kaomoji?q=` | → `{"kaomoji": [{"id", "text", "key", "groups", "source"?}…], "groups": [Group…]}` | searches text and group names |
+| `POST /kaomoji` | `{"text", "groups"?}` | one line, ≤ 80 chars; same `key` already there → **409** `{"ok": false, "error", "duplicate": {…the existing one…}}` |
+| `PUT /kaomoji/<id>` | `{"text"?, "groups"?}` | same 409 if the new text's `key` belongs to another one; `groups` present = the new list, absent = keep |
 | `DELETE /kaomoji/<id>` | | |
 | `POST /kaomoji/import/preview` | `{"url"}` → `{"url", "fetched_at", "found", "new", "candidates": [{"text", "key", "exists", "existing_id"?}], "known_source"}` | same key twice in one page → only the first; offered by this page before → left out; already saved → `exists: true` (the panel greys it out, unticked) |
-| `POST /kaomoji/import` | `{"url", "fetched_at", "items": [{"text", "group"?}], "offered": ["…"]}` → `{"ok": true, "added": […]}` | saves the ticked ones with `source: {url, fetched_at}`; remembers everything offered |
+| `POST /kaomoji/import` | `{"url", "fetched_at", "items": [{"text", "groups"?}], "offered": ["…"]}` → `{"ok": true, "added": […]}` | saves the ticked ones with `source: {url, fetched_at}`; remembers everything offered |
 | `GET /kaomoji/sources` | → `{"sources": [{"url", "added_at", "last_fetched_at", "seen": […]}]}` | |
 | `DELETE /kaomoji/sources?url=` | | forgets the page; kept kaomoji stay |
 
@@ -96,13 +96,15 @@ Stickers and kaomoji each have their own list of groups, same shape and same end
 | `POST /<lib>/groups` | `{"name"}` → `{"ok": true, "group"}` | 1–20 chars; a name that exists → **409** `{"duplicate": {…}}` |
 | `PUT /<lib>/groups` | `{"order": [id, id, …]}` → `{"ok": true, "groups"}` | reorder; ids left out keep their relative order after the listed ones |
 | `PUT /<lib>/groups/<id>` | `{"name"}` → `{"ok": true, "group"}` | rename; same 409 rule |
-| `DELETE /<lib>/groups/<id>` | → `{"ok": true, "group"}` | the group's items become ungrouped (`group: null`); nothing else is deleted |
+| `DELETE /<lib>/groups/<id>` | → `{"ok": true, "group"}` | the group comes off every item that had it (an item left in no group is ungrouped); nothing else is deleted |
 
 ```json
 {"groups": [{"id": 1, "name": "开心", "order": 1}, {"id": 6, "name": "困了", "order": 2}], "next_group_id": 12}
 ```
 
-Items store only `group`: a group id, or `null` for ungrouped. On add / edit the server also accepts a group **name** and creates the group if it's new (the panel creates new groups first and sends the id). Files written by older versions stored group names on the items; they are migrated on load — one group per distinct name, in first-seen order. Group ids are never reused.
+Groups are the only way to sort things — there are no tags. Items store `groups`: a list of group ids, `[]` for ungrouped; one item can be in several groups. On add / edit the list may also hold group **names**; the server creates the ones that are new (the panel creates new groups first and sends ids). Group ids are never reused.
 
-条目只存分组 id（未分组是 `null`）；分组单独存一个有序数组。删分组时里面的条目并入「未分组」。旧数据存的是分组名字，读的时候自动迁移。
+Upgrading older data: files and clients from before groups-only used a single `group` (an id, or a name in even older files) and a separate `tags` list. On load both are folded into `groups` — a name with no group gets a new group, after the existing ones, in first-seen order — and neither is written back. A request that still sends `group` / `tags` instead of `groups` can only **add** groups to the item (so a stale page can't ungroup anything by accident).
+
+条目存 `groups`：分组 id 的列表（未分组是 `[]`），一条可以进好几个分组；没有另外的标签。分组单独存一个有序数组。删分组只是把它从条目上摘掉。旧数据（单个 `group`、`tags`）读的时候自动并进 `groups`：没有同名分组的就新建一个，排在已有分组后面；写回时不再写 `group` / `tags`。旧页面发来的 `group` / `tags` 只会给条目加组，不会清掉。
 
