@@ -149,7 +149,7 @@ python3 packages/stickers/serve.py 8765    # 最小服务：列表 / 出图 / �
 
 - `docs/og.png`（1280×640）是 `docs/og.html` 截出来的。
 - **仓库直链也带封面**：GitHub 仓库 → Settings → General → Social preview → Edit → Upload an image，选 `docs/og.png`。
-- 主页：https://tutooth.com/hello/stickers/（`docs/` 那一页同一份，也发在 GitHub Pages 上）。
+- 主页：https://tutooth.com/hello/cute-chat-stickers/（`docs/` 那一页同一份，也发在 GitHub Pages 上）。
 
 ## 许可证
 
@@ -205,7 +205,7 @@ Nine built-in groups in `packages/kaomoji/kaomoji.json`. **Paste any kaomoji web
 
 ## Social preview
 
-`docs/og.png` (1280×640) is a screenshot of `docs/og.html`. Upload it in the repo's Settings → General → Social preview so plain github.com links get the card too. Home page: https://tutooth.com/hello/stickers/ (the same `docs/` page is also published on GitHub Pages).
+`docs/og.png` (1280×640) is a screenshot of `docs/og.html`. Upload it in the repo's Settings → General → Social preview so plain github.com links get the card too. Home page: https://tutooth.com/hello/cute-chat-stickers/ (the same `docs/` page is also published on GitHub Pages).
 
 ## License
 
