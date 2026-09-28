@@ -118,6 +118,16 @@ StickerRender.into(bubbleEl, message.text);
 - **数据**：分组单独存一个有序数组 `groups: [{ id, name, order }]`，条目只存 `group`（分组 id，未分组是 `null`）。旧数据里存的是分组名字，读的时候自动迁移（每个名字建一个分组）。浏览器本地的 `localStore` 也一样迁移。
 - 接口：`GET/POST/PUT {api}/stickers/groups`、`PUT/DELETE {api}/stickers/groups/<id>`，颜文字是 `{api}/kaomoji/groups`，见 PROTOCOL。命令行：`sticker.py groups [add 名字 | rename id 名字 | rm id | up id | down id]`，颜文字前面加 `kaomoji`。
 
+## 为什么 AI 发表情包不花 token
+
+图片从头到尾不进模型的上下文。
+
+- AI 发：在回复里写 `[[sticker:兔子晕倒]]`，十来个字符。前端渲染消息时把这个标记换成 `<img>`，图从你的表情包接口出。模型没看过图，也不用背文件路径或 base64。
+- 人发：对方从抽屉挑一张，发出去的消息正文也只是 `[[sticker:兔子晕倒]]`。AI 收到的是这行字，不是一张要按图片计费的附件。名字起得像描述（「趴在地上摇屁股的垂耳兔」），AI 读名字就知道对方发了什么。
+- 贴表情（❤️ 🥺 …）同理：存在那条消息的 meta 里，喂给 AI 时只需要在末尾加一行「（对方给 #62410 贴了 🐰）」。
+
+AI 老忘记自己会发表情包，多半是因为它得先去查有哪些图。把库的名字列表（几十个名字，几百 token）放进系统提示或工具说明里，让它不查也知道有什么，再规定「一条消息最多一张」，就够了。改名时旧名留在 `aliases`，历史消息里的标记不会因为你重命名而裂图。
+
 ## 表情包库
 
 ```sh
