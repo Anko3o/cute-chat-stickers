@@ -22,43 +22,37 @@
 <meta name="twitter:image" content="https://tutooth.com/hello/cute-chat-stickers/og.png">
 <meta name="twitter:image:alt" content="长按哪里，就贴在哪里 — cute-chat-stickers">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b0607f' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z'/%3E%3Cpath d='M15 3v4a2 2 0 0 0 2 2h4'/%3E%3C/svg%3E">
+<!-- 9-28 换壳：兔牙小课堂共用壳（门厅同款皮、日夜开关、返回钮、页脚）。写成 tutooth.com 的绝对地址，
+     这样 GitHub Pages 上那份（docs/index.html，同一个文件）也穿同一件衣服；壳取不到时下面的变量兜底，页面照样能读。 -->
+<meta name="class:date" content="2026-09-28">
+<meta name="class:author" content="安可、小雾、斐洛">
+<meta name="class:tags" content="表情包, emoji, 颜文字/kaomoji">
+<meta name="class:license" content="CC BY-NC-SA 4.0">
+<meta name="class:crumb" content="cute-chat-stickers">
+<meta name="class:note" content="聊天背景的玩法参考了小红书 2026-09 的聊天背景功能">
+<meta name="class:source" content="https://github.com/Anko3o/cute-chat-stickers">
+<meta name="theme-color" content="#fdf7fb">
+<link rel="stylesheet" href="https://tutooth.com/assets/styles/skin.css?v=8">
+<link rel="stylesheet" href="https://tutooth.com/hello/class/class.css?v=20260928">
+<script src="https://tutooth.com/assets/js/skin.js?v=2"></script>
 <style>
+  /* 本页特有的小组件；颜色接门厅色板（--hp-* / --cl-*），逗号后面是壳取不到时的兜底 */
   :root{
-    --ink: #3f2f37; --soft: #7b6571; --faint: #a08c96; --line: rgba(176, 96, 127, .26);
-    --bg: #fbf1f4; --paper: #fffdfd; --accent: #b0607f; --accent-ink: #fffafd; --code: #f6e9ee;
+    --ink: var(--cl-text, #3f2f37); --soft: var(--cl-soft, #7b6571); --faint: var(--hp-ink, #a08c96); --line: var(--hp-line, rgba(176, 96, 127, .26));
+    --paper: var(--hp-box, #fffdfd); --accent: var(--cl-accent, #b0607f); --accent-ink: var(--hp-box, #fffafd);
   }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){ --ink: #f1e6eb; --soft: #c2afb8; --faint: #8f7c86; --line: rgba(231, 162, 191, .22); --bg: #1b1619; --paper: #231d21; --accent: #e7a2bf; --accent-ink: #231d21; --code: #2c2429; }
-  }
-  :root[data-theme="dark"]{ --ink: #f1e6eb; --soft: #c2afb8; --faint: #8f7c86; --line: rgba(231, 162, 191, .22); --bg: #1b1619; --paper: #231d21; --accent: #e7a2bf; --accent-ink: #231d21; --code: #2c2429; }
-  *{ box-sizing: border-box; }
-  body{ margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.75 -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif; }
-  main{ max-width: 980px; margin: 0 auto; padding: 56px 16px 72px; }
-  .kicker{ margin: 0; font-size: 13px; letter-spacing: .28em; color: var(--accent); }
-  h1{ margin: 12px 0 0; font-size: clamp(34px, 7vw, 58px); line-height: 1.18; letter-spacing: .03em; }
-  .lede{ margin: 18px 0 0; max-width: 40em; font-size: 18px; color: var(--soft); }
-  .en{ margin: 6px 0 0; font-size: 15px; color: var(--faint); }
-  .cta{ display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
-  .btn{ display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: 15px; background: var(--paper); }
+  .lede{ margin: 14px 0 0; max-width: 40em; font-size: 16px; color: var(--soft); }
+  .en{ margin: 6px 0 0; font-size: 14px; color: var(--faint); }
+  .cta{ display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+  .btn{ display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--line); color: var(--hp-deep, var(--ink)); text-decoration: none; font-size: 15px; background: var(--paper); }
   .btn.primary{ background: var(--accent); border-color: transparent; color: var(--accent-ink); }
   .btn svg{ width: 18px; height: 18px; }
-  .shots{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 48px 0 0; }
-  figure{ margin: 0; }
-  figure img{ display: block; width: 100%; border-radius: 18px; border: 1px solid var(--line); background: var(--paper); }
-  figcaption{ margin-top: 10px; font-size: 14px; color: var(--soft); text-align: center; }
-  h2{ margin: 64px 0 16px; font-size: 22px; letter-spacing: .06em; }
-  .steps{ list-style: none; padding: 0; margin: 0; display: grid; gap: 16px; counter-reset: s; }
-  .steps li{ counter-increment: s; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 14px; align-items: start; }
-  .steps li::before{ content: counter(s); width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid var(--accent); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 14px; }
-  .steps p{ margin: 2px 0 8px; }
-  pre{ margin: 0; padding: 14px 16px; border-radius: 14px; background: var(--code); border: 1px solid var(--line); overflow-x: auto; font: 13.5px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
-  table{ width: 100%; border-collapse: collapse; font-size: 15px; }
-  th, td{ text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th{ font-weight: 500; color: var(--soft); font-size: 13px; letter-spacing: .08em; }
-  .table-wrap{ overflow-x: auto; }
-  footer{ margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 13px; color: var(--faint); }
-  footer a{ color: var(--soft); }
-  @media (max-width: 720px){ .shots{ grid-template-columns: repeat(2, minmax(0, 1fr)); } main{ padding-top: 36px; } }
+  .shots{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 36px 0 0; }
+  .shots figure{ margin: 0; }
+  .shots figure img{ display: block; width: 100%; border-radius: 14px; border: 1px solid var(--line); background: var(--paper); }
+  .shots figcaption{ margin-top: 8px; font-size: 13px; color: var(--soft); text-align: center; }
+  .steps p{ margin: 0 0 8px; }
+  @media (max-width: 720px){ .shots{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>
 </head>
 <body>
@@ -123,7 +117,7 @@
     </tbody>
   </table></div>
 
-  <footer><a href="/hello/class/">← 兔牙小课堂</a> · CC BY-NC-SA 4.0 · 聊天背景的玩法参考了小红书 2026-09 的聊天背景功能 · <a href="https://github.com/Anko3o/cute-chat-stickers">source</a></footer>
 </main>
+<script src="https://tutooth.com/hello/class/class.js?v=20260928"></script>
 </body>
 </html>
