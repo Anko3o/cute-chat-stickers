@@ -49,14 +49,14 @@ Validate that `emoji` is one short emoji (the reference rejects ASCII letters/di
 
 | | | |
 |---|---|---|
-| `GET /stickers?q=` | → `{"stickers": [Sticker…]}` | searches name, description, tags, aliases |
+| `GET /stickers?q=` | → `{"stickers": [Sticker…], "groups": [Group…]}` | searches name, description, tags, aliases, group name |
 | `GET /sticker/<name \| alias \| id>` | → the image | old names keep working after a rename |
-| `POST /stickers` | `{"name", "desc"?, "tags"?, "data": "data:image/png;base64,…"}` → `{"ok": true, "sticker"}` | png / jpg / gif / webp, ≤ 8 MB |
-| `PUT /stickers/<id \| name>` | `{"name"?, "desc"?, "tags"?}` → `{"ok": true, "sticker"}` | renaming renames the file and appends the old name to `aliases` |
+| `POST /stickers` | `{"name", "desc"?, "tags"?, "group"?, "data": "data:image/png;base64,…"}` → `{"ok": true, "sticker"}` | png / jpg / gif / webp, ≤ 8 MB |
+| `PUT /stickers/<id \| name>` | `{"name"?, "desc"?, "tags"?, "group"?}` → `{"ok": true, "sticker"}` | renaming renames the file and appends the old name to `aliases`; `group` present = move (`null` = ungrouped), absent = keep |
 | `DELETE /stickers/<id \| name>` | → `{"ok": true, "sticker"}` | |
 
 ```json
-{"id": 1, "name": "蝴蝶结", "file": "sample-bow.webp", "desc": "…", "tags": ["示例"], "aliases": [], "owner": "a"}
+{"id": 1, "name": "蝴蝶结", "file": "sample-bow.webp", "desc": "…", "tags": ["示例"], "aliases": [], "group": null, "owner": "a"}
 ```
 
 `id` is stable and never reused. Names: 1–40 chars, none of `/ \ . : [ ] < > " ' &`. Schema: `packages/stickers/index.schema.json`.
@@ -67,12 +67,12 @@ Validate that `emoji` is one short emoji (the reference rejects ASCII letters/di
 
 | | | |
 |---|---|---|
-| `GET /kaomoji?q=` | → `{"kaomoji": [{"id", "text", "key", "group", "source"?}…]}` | |
+| `GET /kaomoji?q=` | → `{"kaomoji": [{"id", "text", "key", "group", "source"?}…], "groups": [Group…]}` | searches text and group name |
 | `POST /kaomoji` | `{"text", "group"?}` | one line, ≤ 80 chars; same `key` already there → **409** `{"ok": false, "error", "duplicate": {…the existing one…}}` |
-| `PUT /kaomoji/<id>` | `{"text"?, "group"?}` | same 409 if the new text's `key` belongs to another one |
+| `PUT /kaomoji/<id>` | `{"text"?, "group"?}` | same 409 if the new text's `key` belongs to another one; `group` present = move, absent = keep |
 | `DELETE /kaomoji/<id>` | | |
 | `POST /kaomoji/import/preview` | `{"url"}` → `{"url", "fetched_at", "found", "new", "candidates": [{"text", "key", "exists", "existing_id"?}], "known_source"}` | same key twice in one page → only the first; offered by this page before → left out; already saved → `exists: true` (the panel greys it out, unticked) |
-| `POST /kaomoji/import` | `{"url", "fetched_at", "items": [{"text", "group"}], "offered": ["…"]}` → `{"ok": true, "added": […]}` | saves the ticked ones with `source: {url, fetched_at}`; remembers everything offered |
+| `POST /kaomoji/import` | `{"url", "fetched_at", "items": [{"text", "group"?}], "offered": ["…"]}` → `{"ok": true, "added": […]}` | saves the ticked ones with `source: {url, fetched_at}`; remembers everything offered |
 | `GET /kaomoji/sources` | → `{"sources": [{"url", "added_at", "last_fetched_at", "seen": […]}]}` | |
 | `DELETE /kaomoji/sources?url=` | | forgets the page; kept kaomoji stay |
 
@@ -85,3 +85,24 @@ Validate that `emoji` is one short emoji (the reference rejects ASCII letters/di
 **Sync / 同步** = import the same URL again. Only new candidates come back; nothing you already saved or edited is touched.
 
 同步＝对同一个网址再导入一次，只端出新出现的；你存过、改过的一条都不动。
+
+## Groups · 分组
+
+Stickers and kaomoji each have their own list of groups, same shape and same endpoints (`<lib>` = `stickers` or `kaomoji`).
+
+| | | |
+|---|---|---|
+| `GET /<lib>/groups` | → `{"groups": [{"id", "name", "order", "count"}…]}` | in the user's order |
+| `POST /<lib>/groups` | `{"name"}` → `{"ok": true, "group"}` | 1–20 chars; a name that exists → **409** `{"duplicate": {…}}` |
+| `PUT /<lib>/groups` | `{"order": [id, id, …]}` → `{"ok": true, "groups"}` | reorder; ids left out keep their relative order after the listed ones |
+| `PUT /<lib>/groups/<id>` | `{"name"}` → `{"ok": true, "group"}` | rename; same 409 rule |
+| `DELETE /<lib>/groups/<id>` | → `{"ok": true, "group"}` | the group's items become ungrouped (`group: null`); nothing else is deleted |
+
+```json
+{"groups": [{"id": 1, "name": "开心", "order": 1}, {"id": 6, "name": "困了", "order": 2}], "next_group_id": 12}
+```
+
+Items store only `group`: a group id, or `null` for ungrouped. On add / edit the server also accepts a group **name** and creates the group if it's new (the panel creates new groups first and sends the id). Files written by older versions stored group names on the items; they are migrated on load — one group per distinct name, in first-seen order. Group ids are never reused.
+
+条目只存分组 id（未分组是 `null`）；分组单独存一个有序数组。删分组时里面的条目并入「未分组」。旧数据存的是分组名字，读的时候自动迁移。
+

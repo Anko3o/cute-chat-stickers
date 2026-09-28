@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Minimal sticker + kaomoji server (stdlib only). Binds 127.0.0.1 — put your own auth in front before exposing writes.
 
-  GET    /stickers?q=word          list / search                → {"stickers": [...]}
+  GET    /stickers?q=word          list / search                → {"stickers": [...], "groups": [...]}
   GET    /sticker/<name|id>        the image (old names in `aliases` still work)
-  POST   /stickers                 {name, desc?, tags?, data: "data:image/png;base64,..."}
-  PUT    /stickers/<id>            {name?, desc?, tags?}         renaming keeps the old name as an alias
+  POST   /stickers                 {name, desc?, tags?, group?, data: "data:image/png;base64,..."}
+  PUT    /stickers/<id>            {name?, desc?, tags?, group?}  renaming keeps the old name as an alias
   DELETE /stickers/<id>
 
-  GET    /kaomoji?q=word           → {"kaomoji": [...]}
+  GET    /kaomoji?q=word           → {"kaomoji": [...], "groups": [...]}
   POST   /kaomoji                  {text, group?}               409 {duplicate} if the same key exists
   PUT    /kaomoji/<id>             {text?, group?}
   DELETE /kaomoji/<id>
@@ -15,13 +15,20 @@
   POST   /kaomoji/import           {url, fetched_at, items: [{text, group}], offered: [...]}
   GET    /kaomoji/sources          DELETE /kaomoji/sources?url=...
 
+  Groups, the same for both (<lib> = stickers | kaomoji); `group` on an item is a group id, or a name (created if new), or null:
+  GET    /<lib>/groups             → {"groups": [{id, name, order, count}]}
+  POST   /<lib>/groups             {name}
+  PUT    /<lib>/groups             {order: [id, id, ...]}
+  PUT    /<lib>/groups/<id>        {name}
+  DELETE /<lib>/groups/<id>        its items become ungrouped
+
   STICKER_DIR=./stickers python3 serve.py [port]        (STICKER_READONLY=1 turns writes off)
 """
 import base64, json, mimetypes, os, re, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import URLError
 from urllib.parse import parse_qs, unquote, urlparse
-from sticker import DuplicateError, Kaomoji, Shelf, ShelfError, Sources, import_commit, import_preview
+from sticker import KEEP, DuplicateError, Kaomoji, Shelf, ShelfError, Sources, import_commit, import_preview
 
 shelf, km = Shelf(), Kaomoji()
 READONLY = os.environ.get("STICKER_READONLY") == "1"
@@ -34,16 +41,30 @@ def add_sticker(b):
     raw = base64.b64decode(m.group(2))
     if len(raw) > 8 * 1024 * 1024:
         raise ShelfError("image over 8 MB")
-    return shelf.add(raw, b.get("name"), b.get("desc", ""), b.get("tags"), ext=m.group(1))
+    return shelf.add(raw, b.get("name"), b.get("desc", ""), b.get("tags"), ext=m.group(1), group=b.get("group"))
+
+
+def keep(b, k):
+    return b[k] if k in b else KEEP
+
+
+def group_routes(prefix, lib):
+    g = lib.groups
+    return [
+        ("POST", prefix + r"/groups", lambda m, b, q: {"group": g.add(b.get("name"))}),
+        ("PUT", prefix + r"/groups", lambda m, b, q: {"groups": g.reorder(b.get("order"))}),
+        ("PUT", prefix + r"/groups/(\d+)", lambda m, b, q: {"group": g.rename(m[1], b.get("name"))}),
+        ("DELETE", prefix + r"/groups/(\d+)", lambda m, b, q: {"group": g.remove(m[1])}),
+    ]
 
 
 # (method, path regex) → handler(match, body, query)
-ROUTES = [
+ROUTES = group_routes("/stickers", shelf) + group_routes("/kaomoji", km) + [      # groups first: /stickers/groups ≠ /stickers/<id>
     ("POST", r"/stickers", lambda m, b, q: {"sticker": add_sticker(b)}),
-    ("PUT", r"/stickers/([^/]+)", lambda m, b, q: {"sticker": shelf.edit(m[1], name=b.get("name"), desc=b.get("desc"), tags=b.get("tags"))}),
+    ("PUT", r"/stickers/([^/]+)", lambda m, b, q: {"sticker": shelf.edit(m[1], name=b.get("name"), desc=b.get("desc"), tags=b.get("tags"), group=keep(b, "group"))}),
     ("DELETE", r"/stickers/([^/]+)", lambda m, b, q: {"sticker": shelf.remove(m[1])}),
-    ("POST", r"/kaomoji", lambda m, b, q: {"kaomoji": km.add(b.get("text"), b.get("group", ""))}),
-    ("PUT", r"/kaomoji/(\d+)", lambda m, b, q: {"kaomoji": km.edit(m[1], text=b.get("text"), group=b.get("group"))}),
+    ("POST", r"/kaomoji", lambda m, b, q: {"kaomoji": km.add(b.get("text"), b.get("group"))}),
+    ("PUT", r"/kaomoji/(\d+)", lambda m, b, q: {"kaomoji": km.edit(m[1], text=b.get("text"), group=keep(b, "group"))}),
     ("DELETE", r"/kaomoji/(\d+)", lambda m, b, q: {"kaomoji": km.remove(m[1])}),
     ("POST", r"/kaomoji/import/preview", lambda m, b, q: import_preview(km, b.get("url"))),
     ("POST", r"/kaomoji/import", lambda m, b, q: {"added": import_commit(km, b.get("url"), b.get("fetched_at"), b.get("items"), b.get("offered"))}),
@@ -64,9 +85,11 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         q = parse_qs(u.query).get("q", [""])[0]
         if u.path == "/stickers":
-            return self.send(200, {"stickers": shelf.search(q)})
+            return self.send(200, {"stickers": shelf.search(q), "groups": shelf.groups.list()})
         if u.path == "/kaomoji":
-            return self.send(200, {"kaomoji": km.search(q)})
+            return self.send(200, {"kaomoji": km.search(q), "groups": km.groups.list()})
+        if u.path in ("/stickers/groups", "/kaomoji/groups"):
+            return self.send(200, {"groups": (shelf if u.path.startswith("/stickers") else km).groups.list()})
         if u.path == "/kaomoji/sources":
             return self.send(200, Sources(km).load())
         m = re.match(r"^/sticker/([^/]+)$", u.path)
@@ -92,7 +115,7 @@ class H(BaseHTTPRequestHandler):
             groups = [unquote(g) for g in m.groups()]
             out = fn([m.group(0)] + groups, body if isinstance(body, dict) else {}, parse_qs(u.query))
             return self.send(200, dict(ok=True, **out))
-        except DuplicateError as e:                      # same kaomoji key already there → 409 + which one
+        except DuplicateError as e:                      # same kaomoji key / same group name → 409 + which one
             return self.send(409, {"ok": False, "error": str(e), "duplicate": e.item})
         except (ShelfError, ValueError, URLError, OSError) as e:
             return self.send(400, {"ok": False, "error": str(getattr(e, "reason", e))})

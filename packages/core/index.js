@@ -2,15 +2,15 @@
  *    empty chat area → the background (emoji-bg)
  *    a bubble        → that message (reactions: 2 × 4 grid, "+" opens your stickers)
  *    an image        → that picture's message (same grid, or your own onMedia)
- *  plus two drawers next to the composer: stickers (send) and kaomoji (insert).
+ *  plus one drawer next to the composer with two tabs: 贴纸 stickers (send) | 颜文字 kaomoji (insert).
  *
  *   ChatStickers.init({
  *     container: "#messages", me: { id: "a", name: "A", emoji: "🐰" }, others: [{ id: "b", name: "B", emoji: "🦊" }],
  *     api: "/chat-stickers",                         // one base URL for the reference server, or leave out and pass stores
- *     stickers: { button: "#stickerBtn", input: "#input", send: (text) => send(text) },
- *     kaomoji:  { button: "#kaomojiBtn", input: "#input" },
+ *     panel: { button: "#drawerBtn", anchor: "#composer", input: "#input", send: (text) => send(text) },
  *   })
- * Any of background / reactions / stickers / kaomoji can be `false`. CC BY-NC-SA 4.0.
+ * Any of background / reactions / panel can be `false`; `panel.tabs` picks ["stickers", "kaomoji"] or just one.
+ * Old style — a separate button per drawer — still works: leave `panel` out and give `stickers.button` / `kaomoji.button`. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";
@@ -36,7 +36,7 @@
     var o = Object.assign({
       container: null, me: { id: "me", name: "", emoji: "🐰" }, others: [], bubble: ".bubble", media: "img, video, .media",
       api: null, headers: null, events: undefined, longPressMs: 500, lang: null,
-      background: {}, reactions: {}, stickers: {}, kaomoji: {}, onMedia: null,
+      background: {}, reactions: {}, panel: null, stickers: {}, kaomoji: {}, onMedia: null,
     }, opts || {});
     var api = o.api;
     var events = o.events !== undefined ? o.events : (api != null ? api + "/events" : null);
@@ -82,10 +82,18 @@
       });
     }
 
-    if (o.stickers && global.StickerPanel) global.StickerPanel.init(Object.assign({ lang: o.lang, api: api, headers: o.headers }, o.stickers));
-    if (o.kaomoji && global.KaomojiBox) global.KaomojiBox.init(Object.assign({ lang: o.lang, api: api, headers: o.headers }, o.kaomoji));
+    if (o.panel && global.ChatStickers.panel) {
+      // default: one button, one drawer, a 贴纸 | 颜文字 switch on top
+      out.panel = global.ChatStickers.panel(Object.assign({ lang: o.lang, api: api, headers: o.headers,
+        stickers: o.stickers || {}, kaomoji: o.kaomoji || {},
+        tabs: [o.stickers !== false && "stickers", o.kaomoji !== false && "kaomoji"].filter(Boolean) }, o.panel));
+    } else {
+      // optional: each drawer on its own button
+      if (o.stickers && o.stickers.button && global.StickerPanel) global.StickerPanel.init(Object.assign({ lang: o.lang, api: api, headers: o.headers }, o.stickers));
+      if (o.kaomoji && o.kaomoji.button && global.KaomojiBox) global.KaomojiBox.init(Object.assign({ lang: o.lang, api: api, headers: o.headers }, o.kaomoji));
+    }
     return out;
   }
 
-  global.ChatStickers = { init: init, version: "0.1.0" };
+  global.ChatStickers = Object.assign(global.ChatStickers || {}, { init: init, version: "0.1.0" });
 })(typeof window !== "undefined" ? window : this);

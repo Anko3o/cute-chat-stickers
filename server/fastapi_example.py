@@ -13,7 +13,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "packages", "stickers"))
-from sticker import DuplicateError, Kaomoji, Shelf, ShelfError, Sources, import_commit, import_preview  # noqa: E402
+from sticker import KEEP, DuplicateError, Kaomoji, Shelf, ShelfError, Sources, import_commit, import_preview  # noqa: E402
 
 PEOPLE = {"a": "🐰", "b": "🦊"}          # participant id → default emoji
 app = FastAPI(title="chat-stickers reference server")
@@ -46,7 +46,7 @@ def shelf_call(fn, *a, **kw):
 
 @app.exception_handler(DuplicateError)
 async def duplicate(request: Request, e: DuplicateError):
-    """Same kaomoji key already exists: 409 and which one, so the page can jump to it."""
+    """Same kaomoji key / same group name already exists: 409 and which one, so the page can jump to it."""
     return JSONResponse({"ok": False, "error": str(e), "duplicate": e.item}, status_code=409)
 
 
@@ -102,10 +102,39 @@ async def react(request: Request, who: str = Depends(current_user)):
     return {"ok": True, "id": mid, "reactions": rx}
 
 
+# ── groups (the same for stickers and kaomoji; declared before /stickers/{key} so "groups" isn't taken for a key) ──
+def group_routes(prefix: str, lib):
+    g = lib.groups
+
+    @app.get(prefix + "/groups")
+    def list_groups():
+        return {"groups": g.list()}
+
+    @app.post(prefix + "/groups")
+    async def add_group(request: Request, who: str = Depends(current_user)):
+        return {"ok": True, "group": shelf_call(g.add, (await request.json()).get("name"))}
+
+    @app.put(prefix + "/groups")
+    async def reorder_groups(request: Request, who: str = Depends(current_user)):
+        return {"ok": True, "groups": shelf_call(g.reorder, (await request.json()).get("order"))}
+
+    @app.put(prefix + "/groups/{gid}")
+    async def rename_group(gid: int, request: Request, who: str = Depends(current_user)):
+        return {"ok": True, "group": shelf_call(g.rename, gid, (await request.json()).get("name"))}
+
+    @app.delete(prefix + "/groups/{gid}")
+    def delete_group(gid: int, who: str = Depends(current_user)):
+        return {"ok": True, "group": shelf_call(g.remove, gid)}      # its items become ungrouped
+
+
+group_routes("/stickers", shelf)
+group_routes("/kaomoji", km)
+
+
 # ── stickers ──
 @app.get("/stickers")
 def list_stickers(q: str = ""):
-    return {"stickers": shelf.search(q)}
+    return {"stickers": shelf.search(q), "groups": shelf.groups.list()}
 
 
 @app.get("/sticker/{key}")
@@ -125,13 +154,15 @@ async def add_sticker(request: Request, who: str = Depends(current_user)):
     raw = base64.b64decode(m.group(2))
     if len(raw) > 8 * 1024 * 1024:
         raise HTTPException(400, "image over 8 MB")
-    return {"ok": True, "sticker": shelf_call(shelf.add, raw, b.get("name"), b.get("desc", ""), b.get("tags"), owner=who, ext=m.group(1))}
+    return {"ok": True, "sticker": shelf_call(shelf.add, raw, b.get("name"), b.get("desc", ""), b.get("tags"), owner=who,
+                                              ext=m.group(1), group=b.get("group"))}
 
 
 @app.put("/stickers/{key}")
 async def edit_sticker(key: str, request: Request, who: str = Depends(current_user)):
     b = await request.json()
-    return {"ok": True, "sticker": shelf_call(shelf.edit, key, name=b.get("name"), desc=b.get("desc"), tags=b.get("tags"))}
+    return {"ok": True, "sticker": shelf_call(shelf.edit, key, name=b.get("name"), desc=b.get("desc"), tags=b.get("tags"),
+                                              group=b["group"] if "group" in b else KEEP)}
 
 
 @app.delete("/stickers/{key}")
@@ -142,19 +173,19 @@ def delete_sticker(key: str, who: str = Depends(current_user)):
 # ── kaomoji ──
 @app.get("/kaomoji")
 def list_kaomoji(q: str = ""):
-    return {"kaomoji": km.search(q)}
+    return {"kaomoji": km.search(q), "groups": km.groups.list()}
 
 
 @app.post("/kaomoji")
 async def add_kaomoji(request: Request, who: str = Depends(current_user)):
     b = await request.json()
-    return {"ok": True, "kaomoji": shelf_call(km.add, b.get("text"), b.get("group", ""))}
+    return {"ok": True, "kaomoji": shelf_call(km.add, b.get("text"), b.get("group"))}
 
 
 @app.put("/kaomoji/{kid}")
 async def edit_kaomoji(kid: int, request: Request, who: str = Depends(current_user)):
     b = await request.json()
-    return {"ok": True, "kaomoji": shelf_call(km.edit, kid, text=b.get("text"), group=b.get("group"))}
+    return {"ok": True, "kaomoji": shelf_call(km.edit, kid, text=b.get("text"), group=b["group"] if "group" in b else KEEP)}
 
 
 @app.delete("/kaomoji/{kid}")

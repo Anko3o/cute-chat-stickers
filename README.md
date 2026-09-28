@@ -1,12 +1,12 @@
 # cute-chat-stickers
 
-给聊天页加三样「贴」——贴背景 emoji、长按给气泡贴表情、自己的表情包库（外加一个颜文字小抽屉）。
+给聊天页加三样「贴」——贴背景 emoji、长按给气泡贴表情、自己的表情包库和颜文字（一个抽屉两个 tab）。
 **长按落在哪，就往哪贴：** 按在空白处贴到聊天背景上，按在气泡上贴到那条消息上，按在图片上贴到那张图上。
 零依赖，一个 `<script>` 接上就能用。
 
 *[English below](#english)*
 
-| 长按空白 → 背景 | 长按气泡 → 贴表情 | 表情包抽屉 | 颜文字抽屉 |
+| 长按空白 → 背景 | 长按气泡 → 贴表情 | 抽屉 · 贴纸 tab | 抽屉 · 颜文字 tab |
 |---|---|---|---|
 | ![background](docs/shot-background.png) | ![reactions](docs/shot-reactions.png) | ![stickers](docs/shot-stickers.png) | ![kaomoji](docs/shot-kaomoji.png) |
 
@@ -19,15 +19,14 @@
 <script src="dist/chat-stickers.js"></script>
 ```
 
-**2. 你的聊天页只要长这样**：一个滚动的消息列表，每行带 `data-id`，气泡是 `.bubble`（选择器都能改）；输入框旁边放两颗按钮。
+**2. 你的聊天页只要长这样**：一个滚动的消息列表，每行带 `data-id`，气泡是 `.bubble`（选择器都能改）；输入框旁边放一颗按钮。
 
 ```html
 <div id="messages">
   <div class="row" data-id="m1"><div class="bubble">今天的云好软</div></div>
 </div>
 <form id="composer">
-  <button type="button" id="stickerBtn" class="cs-entry"><!-- 你的 SVG --></button>
-  <button type="button" id="kaomojiBtn" class="cs-entry"><!-- 你的 SVG --></button>
+  <button type="button" id="drawerBtn" class="cs-entry"><!-- 你的 SVG --></button>
   <input id="input">
 </form>
 ```
@@ -41,14 +40,15 @@ ChatStickers.init({
   others: [{ id: "b", name: "B", emoji: "🦊" }],
   api: "/chat-stickers",                        // 参考后端的前缀，见 server/
   headers: () => ({ "X-User": currentUserId }),  // 你的鉴权
-  stickers: { button: "#stickerBtn", anchor: "#composer", input: "#input", send: (text) => sendMessage(text) },
-  kaomoji:  { button: "#kaomojiBtn", anchor: "#composer", input: "#input" },
+  // 一颗按钮、一个抽屉，顶上「贴纸 | 颜文字」切换，记住上次停在哪个 tab
+  panel: { button: "#drawerBtn", anchor: "#composer", input: "#input", send: (text) => sendMessage(text),
+           tabs: ["stickers", "kaomoji"], remember: true },
 });
 // 渲染消息时把 [[sticker:名字]] 换成图：
 StickerRender.into(bubbleEl, message.text);
 ```
 
-后端二选一：`server/fastapi_example.py`（全部接口：背景状态、贴表情、表情包、颜文字、导入、SSE），或 `packages/stickers/serve.py`（只有表情包＋颜文字，纯标准库）。接口契约见 [`server/PROTOCOL.md`](server/PROTOCOL.md)，鉴权由你决定。
+后端二选一：`server/fastapi_example.py`（全部接口：背景状态、贴表情、表情包、颜文字、分组、颜文字导入、SSE），或 `packages/stickers/serve.py`（只有表情包＋颜文字，纯标准库）。接口契约见 [`server/PROTOCOL.md`](server/PROTOCOL.md)，鉴权由你决定。
 
 本地先试：`python3 -m http.server` 在仓库根目录跑起来，打开 `demo/index.html`，再开一个标签页 `demo/index.html?me=b` 当另一个人（两个标签页之间用 BroadcastChannel 模拟服务器）。
 
@@ -80,7 +80,8 @@ StickerRender.into(bubbleEl, message.text);
 | `lang` | 跟浏览器 | `"zh"` / `"en"`，文案都能用 `labels` 覆盖 |
 | `background` | `{}` | 传给 `EmojiBg.init` 的额外选项 ↓ |
 | `reactions` | `{}` | 传给 `Reactions.init` 的额外选项 ↓ |
-| `stickers` / `kaomoji` | `{}` | 传给 `StickerPanel.init` / `KaomojiBox.init` ↓ |
+| `panel` | `null` | 一个抽屉两个 tab ↓；不给就退回「每个抽屉一颗按钮」的老写法 |
+| `stickers` / `kaomoji` | `{}` | 传给 `StickerPanel.init` / `KaomojiBox.init` 的额外选项（`store`、`seedUrl`…）↓；设 `false` 去掉那个 tab |
 
 `EmojiBg`（聊天背景）
 
@@ -98,17 +99,32 @@ StickerRender.into(bubbleEl, message.text);
 
 `Reactions`（气泡贴表情）：`emojis`（前七格）、`more`（第八格 ＋）、`getId(el)`、`canReact(el, id)`、`actions`（格子下面加几行自己的菜单，图标请用 SVG）、`bubbleOf(id)`、`store: { react, subscribe }`。`Reactions.paint(bubble, values)` 画角标。
 
-`StickerPanel`（表情包抽屉）：`button`、`anchor`、`input`、`send(text)`、`api` 或 `store`。点一张＝发送（输入框里已经有字就插到光标处）。
+`panel`（`ChatStickers.panel`，一个抽屉两个 tab）：`button`（唯一的入口）、`anchor`、`input`、`send(text)`、`tabs`（默认 `["stickers", "kaomoji"]`，只要一个就只写一个）、`remember`（默认 `true`，上次停在哪个 tab 存在 localStorage）、`labels`（tab 名字）。顶上是分段切换（线条 SVG ＋ 字，颜色走 `--cs-*` 变量），下面各是一整套抽屉。
 
-`KaomojiBox`（颜文字抽屉）：`button`、`anchor`、`input`、`api` 或 `store` / `seedUrl`。点一条＝插到光标处，不发送。
+`StickerPanel`（贴纸 tab）：`input`、`send(text)`、`api` 或 `store`。点一张＝发送（输入框里已经有字就插到光标处）。
+
+`KaomojiBox`（颜文字 tab）：`input`、`api` 或 `store` / `seedUrl`。点一条＝插到光标处，不发送。
+
+老写法还在：不传 `panel`，改给 `stickers.button` / `kaomoji.button`，就是两颗按钮各开各的抽屉。
+
+## 分组
+
+贴纸和颜文字用同一套分组。
+
+- **选分组是包自己画的药丸**，不用原生下拉：「未分组」、每个分组、最后一颗「＋ 新分组」，当前那颗高亮；点「＋ 新分组」原地变成输入框，回车就有了（保存时才真的建）。添加、修改、颜文字导入都用这一排。
+- **修改一条就能换分组**：「…」→「整理」或长按选中 →「修改」，点另一颗药丸，保存。
+- **「…」→「管理分组」**：点名字改名、上下箭头排序、删除（里面的条目并入「未分组」，不会跟着删）、底下一行新建。
+- 抽屉里按你排的顺序分段，「未分组」排最后。
+- **数据**：分组单独存一个有序数组 `groups: [{ id, name, order }]`，条目只存 `group`（分组 id，未分组是 `null`）。旧数据里存的是分组名字，读的时候自动迁移（每个名字建一个分组）。浏览器本地的 `localStore` 也一样迁移。
+- 接口：`GET/POST/PUT {api}/stickers/groups`、`PUT/DELETE {api}/stickers/groups/<id>`，颜文字是 `{api}/kaomoji/groups`，见 PROTOCOL。命令行：`sticker.py groups [add 名字 | rename id 名字 | rm id | up id | down id]`，颜文字前面加 `kaomoji`。
 
 ## 表情包库
 
 ```sh
 export STICKER_DIR=~/my-stickers            # 或者每条命令加 --dir
-python3 packages/stickers/sticker.py add ~/Downloads/dizzy.png 兔子晕倒 "转圈圈倒下" 兔子,晕
+python3 packages/stickers/sticker.py add ~/Downloads/dizzy.png 兔子晕倒 "转圈圈倒下" 兔子,晕 --group 兔子
 python3 packages/stickers/sticker.py list 兔
-python3 packages/stickers/sticker.py edit 兔子晕倒 --name 晕倒兔 --desc "新描述" --tags 兔子,晕
+python3 packages/stickers/sticker.py edit 兔子晕倒 --name 晕倒兔 --desc "新描述" --tags 兔子,晕 --group 装死
 python3 packages/stickers/sticker.py rm 晕倒兔
 python3 packages/stickers/serve.py 8765    # 最小服务：列表 / 出图 / 增改删
 ```
@@ -116,17 +132,18 @@ python3 packages/stickers/serve.py 8765    # 最小服务：列表 / 出图 / �
 - 消息里写 `[[sticker:名字]]`（`[[表情:名字]]`、`[[sticker:12]]` 也认），`StickerRender` 把它换成图；整条只有一张图时气泡让位。
 - 每张有稳定编号，删了不复用；**改名字时文件跟着改，旧名字留进 `aliases`**，历史消息里的旧名照样出图。
 - 抽屉顶栏 ＝ 搜索 ＋ 添加 ＋ 更多：「…」→「整理」或长按 / 右键某一格选中它，顶栏变成「修改 · 删除」。格子只管挑，不挂按钮。
+- 「添加」＝从本机选一张图，填名字、一句描述、标签、分组。
 - `index.json` 的格式见 `packages/stickers/index.schema.json`。
 - **库里放你自己的图。** 仓里只带了一张示例贴纸 `sample-bow.webp`（「蝴蝶结」）。网上收来的表情包版权不在你手里，请别随仓发布。
 
 ## 颜文字
 
-- 内置九组：开心 / 撒娇 / 委屈 / 生气 / 害羞 / 装死 / 猫 / 兔 / 花边（`packages/kaomoji/kaomoji.json`，`૮₍ ｡• ̫ •｡ ₎ა`、`໒꒱`、`( ⸍›̥̥̥ ᜊ ‹̥̥̥ ⸌)` 这一路）。增改删和表情包一样。
+- 内置十一组：开心 / 撒娇 / 害羞 / 委屈 / 生气 / 困了 / 装死 / 猫 / 兔 / 花边 / 其他（`packages/kaomoji/kaomoji.json`，`૮₍ ｡• ̫ •｡ ₎ა`、`໒꒱`、`( ⸍›̥̥̥ ᜊ ‹̥̥̥ ⸌)` 这一路）。拿不准的放「其他」。增改删和表情包一样。
 - **支持粘贴任意颜文字网页**：「…」→「从网页导入」，贴网址 → 后端抓公开页面（10 秒超时、2MB 上限、拒绝内网地址）→ 按通用规则挑出候选 → 你勾选、归组 → 存进来，每条记下 `source`。没有为哪个站写死解析。
 - **同步**：「…」→「导入来源」→「同步」，同一个网址再抓一次，只端出新出现的；你存过、改过的一条不动。来源存在 `kaomoji-sources.json`，可删。
 - **去重**：每条颜文字存一个 `key`（NFKC → 去掉空白、零宽字符、变体选择符 → 全角标点转半角），key 一样才算重复，不做模糊相似。导入预览里已经有的标「已有」、灰掉、不勾；同一页里 key 相同的只留第一条；手动添加撞上了会提示「添加失败···ᴛ ω ᴛ已经有类似的啦」，并把已有那条高亮、滚过去。
 - 实测两个颜文字站（2026-09-28）：fontsby.com/kaomoji 页面 517 张卡片，认出 491 张，误抽 0；漏掉的 18 张里 13 张是纯 ASCII（`^_^`、`UwU`…），另外 5 张带 3 个以上汉字 / 谚文或像单词的字母串。utilitytools.net/text/kaomoji 的主列表是脚本渲染的，HTML 里只有说明区的 32 个示例，认出 27 个，误抽 0，漏的 5 个都是纯 ASCII。纯 ASCII 的请手动添加。
-- 命令行：`sticker.py kaomoji list | add | edit | rm | import <url> [--all] | sources`。
+- 命令行：`sticker.py kaomoji list | add | edit | rm | groups | import <url> [--all] | sources`。
 
 ## 单独引
 
@@ -134,16 +151,16 @@ python3 packages/stickers/serve.py 8765    # 最小服务：列表 / 出图 / �
 
 | 目录 | 内容 |
 |---|---|
-| `packages/core/` | `press.js` 长按三分法 · `drawer.js` 抽屉底座（增改删、搜索、表单）· `theme.css` 样式变量 · `index.js` 总入口 |
+| `packages/core/` | `press.js` 长按三分法 · `drawer.js` 抽屉底座（增改删、搜索、表单、分组药丸、管理分组）· `panel.js` 一个抽屉两个 tab · `theme.css` 样式变量 · `index.js` 总入口 |
 | `packages/emoji-bg/` | 聊天背景（`EmojiBg`） |
 | `packages/reactions/` | 长按贴表情格子（`Reactions`） |
 | `packages/stickers/` | 表情包：`sticker.py` CLI、`serve.py`、`render.js`、`panel.js`、示例库 |
-| `packages/kaomoji/` | 颜文字抽屉（`KaomojiBox`）和内置颜文字 |
+| `packages/kaomoji/` | 颜文字 tab（`KaomojiBox`）和内置颜文字 |
 | `server/` | `fastapi_example.py` 参考后端、`PROTOCOL.md` 接口契约 |
 | `demo/` | 假对话页，四样都能试 |
 | `docs/` | 截图、GitHub Pages 落地页、分享卡片 |
 
-比如只要表情包：`core/theme.css` ＋ `core/drawer.css` ＋ `core/press.js` ＋ `core/drawer.js` ＋ `stickers/*`。改了 `packages/` 后跑 `./build.sh` 重新拼 `dist/`。
+比如只要表情包：`core/theme.css` ＋ `core/drawer.css` ＋ `core/press.js` ＋ `core/drawer.js` ＋ `stickers/*`（再加 `core/panel.js` 就能用 `ChatStickers.panel({ tabs: ["stickers"] })`）。改了 `packages/` 后跑 `./build.sh` 重新拼 `dist/`。
 
 ## 分享卡片（封面）
 
@@ -165,15 +182,15 @@ CC BY-NC-SA 4.0（署名 · 非商业 · 相同方式共享）。见 `LICENSE`�
 
 # cute-chat-stickers (English)
 
-Three ways to *stick* things in a chat page — emoji on the chat background, reactions on bubbles, and your own sticker shelf (plus a little kaomoji drawer).
+Three ways to *stick* things in a chat page — emoji on the chat background, reactions on bubbles, and your own stickers and kaomoji (one drawer, two tabs).
 **Long-press where you want it to stick:** empty space → the background, a bubble → that message, an image → that picture.
 Zero dependencies; one `<script>` and it works.
 
 ## Three steps
 
 1. Include `dist/chat-stickers.css` and `dist/chat-stickers.js`.
-2. Have a scrolling message list whose rows carry `data-id` and whose bubbles are `.bubble` (all selectors are configurable), and two buttons next to your input.
-3. Call `ChatStickers.init({ container, me, others, api, headers, stickers: {…}, kaomoji: {…} })` and point `api` at a backend: `server/fastapi_example.py` (everything, with SSE) or `packages/stickers/serve.py` (stickers and kaomoji only, standard library). The contract is in [`server/PROTOCOL.md`](server/PROTOCOL.md); authentication is up to you.
+2. Have a scrolling message list whose rows carry `data-id` and whose bubbles are `.bubble` (all selectors are configurable), and one button next to your input.
+3. Call `ChatStickers.init({ container, me, others, api, headers, panel: { button, anchor, input, send } })` and point `api` at a backend: `server/fastapi_example.py` (everything, with SSE) or `packages/stickers/serve.py` (stickers and kaomoji only, standard library). The contract is in [`server/PROTOCOL.md`](server/PROTOCOL.md); authentication is up to you.
 
 Try it locally: run `python3 -m http.server` at the repo root, open `demo/index.html`, and `demo/index.html?me=b` in a second tab to play the other person (the tabs sync through BroadcastChannel).
 
@@ -192,16 +209,22 @@ Lessons from real phones are built in: touch events for timing (iOS cancels poin
 See the tables in the Chinese section above — option names are the same. The short version:
 `EmojiBg`: `cellSize` / `densityPerScreen`, `mix: {day, night}` (how far the page tints towards the emojis' average colour), `seed` (layout is deterministic, so two same-sized screens match), `isNight`, `enabled`, `adapter: {load, save, subscribe}`, `insertBefore`. `EmojiBg.notice({who, emoji, prev})` gives you the "B added 🦊 to the background · Add yours" line.
 `Reactions`: `emojis`, `more`, `getId`, `canReact`, `actions` (SVG icons only), `bubbleOf`, `store: {react, subscribe}`; `Reactions.paint(bubble, values)` draws the chips.
-`StickerPanel`: `button`, `anchor`, `input`, `send(text)`, `api` or `store`. Tap sends (or inserts at the caret if you're mid-sentence).
-`KaomojiBox`: `button`, `anchor`, `input`, `api` or `store` / `seedUrl`. Tap inserts at the caret, never sends.
+`panel` (`ChatStickers.panel`, one drawer, two tabs): `button` (the only entry), `anchor`, `input`, `send(text)`, `tabs` (default `["stickers", "kaomoji"]`), `remember` (default `true`: the last tab is kept in localStorage), `labels`. A segmented switch (line SVG + text, `--cs-*` colours) sits on top; each tab is a full drawer.
+`StickerPanel` (stickers tab): `input`, `send(text)`, `api` or `store`. Tap sends (or inserts at the caret if you're mid-sentence).
+`KaomojiBox` (kaomoji tab): `input`, `api` or `store` / `seedUrl`. Tap inserts at the caret, never sends.
+The old way still works: leave `panel` out and give `stickers.button` / `kaomoji.button` for one drawer per button.
+
+## Groups
+
+Stickers and kaomoji share one group system. Picking a group uses **pills drawn by the package** (no native select): "Ungrouped", every group, then "+ New group", which turns into an inline input. Editing an item can move it to another group. "…" → **Manage groups**: tap a name to rename, arrows to reorder, delete (its items become ungrouped, never deleted), add at the bottom. The drawer is split by group in your order, ungrouped last. Data: an ordered `groups: [{id, name, order}]` array; items store only `group` (an id, or `null`). Older files that stored group names are migrated on load, in the browser store too. Endpoints: `{api}/stickers/groups` and `{api}/kaomoji/groups` (see PROTOCOL). CLI: `sticker.py [kaomoji] groups [add NAME | rename ID NAME | rm ID | up ID | down ID]`.
 
 ## Sticker shelf
 
-`packages/stickers/sticker.py` (`add / list / edit / desc / rm`, folder from `--dir` or `$STICKER_DIR`) and `serve.py` (list, image, add, edit, delete). Write `[[sticker:name]]` in a message (`[[表情:name]]` and `[[sticker:12]]` work too). Numbers are stable and never reused; **renaming keeps the old name in `aliases`** so old messages still show the picture. The drawer's top bar is search + add + more; "…" → Organize (or long-press / right-click a cell) turns it into Edit · Delete. Cells only pick. Put **your own pictures** in the library: the repo ships one sample sticker, `sample-bow.webp`. Stickers collected from the internet aren't yours to publish.
+`packages/stickers/sticker.py` (`add / list / edit / desc / rm`, folder from `--dir` or `$STICKER_DIR`) and `serve.py` (list, image, add, edit, delete). Write `[[sticker:name]]` in a message (`[[表情:name]]` and `[[sticker:12]]` work too). Numbers are stable and never reused; **renaming keeps the old name in `aliases`** so old messages still show the picture. Add = pick a picture on this device + name, description, tags, group. The drawer's top bar is search + add + more; "…" → Organize (or long-press / right-click a cell) turns it into Edit · Delete. Cells only pick. Put **your own pictures** in the library: the repo ships one sample sticker, `sample-bow.webp`. Stickers collected from the internet aren't yours to publish.
 
 ## Kaomoji
 
-Nine built-in groups in `packages/kaomoji/kaomoji.json`. **Paste any kaomoji web page**: "…" → Import from a web page → the backend fetches the public page (10 s timeout, 2 MB cap, private addresses refused) → a generic rule picks candidates → you tick the ones you want and file them under a group → they're saved with their `source`. No site-specific parsing. **Sync** re-imports the same URL and only offers what's new; nothing you saved or edited is touched. Sources live in `kaomoji-sources.json` and can be deleted. **Dedup**: each kaomoji stores a `key` (NFKC → strip whitespace, zero-width characters and variation selectors → full-width punctuation to half-width); equal keys mean duplicate, nothing fuzzy. In the import preview the ones you have are marked and greyed out; same-key repeats on a page keep only the first; a manual add that clashes shows a note and jumps to the existing one. Pages whose list is rendered by JavaScript only expose what's in their HTML, and pure-ASCII faces (`^_^`) are never picked up — add those by hand. CLI: `sticker.py kaomoji list | add | edit | rm | import <url> [--all] | sources`.
+Eleven built-in groups in `packages/kaomoji/kaomoji.json` (unsure ones sit in 其他 / other). **Paste any kaomoji web page**: "…" → Import from a web page → the backend fetches the public page (10 s timeout, 2 MB cap, private addresses refused) → a generic rule picks candidates → you tick the ones you want and file them under a group → they're saved with their `source`. No site-specific parsing. **Sync** re-imports the same URL and only offers what's new; nothing you saved or edited is touched. Sources live in `kaomoji-sources.json` and can be deleted. **Dedup**: each kaomoji stores a `key` (NFKC → strip whitespace, zero-width characters and variation selectors → full-width punctuation to half-width); equal keys mean duplicate, nothing fuzzy. In the import preview the ones you have are marked and greyed out; same-key repeats on a page keep only the first; a manual add that clashes shows a note and jumps to the existing one. Pages whose list is rendered by JavaScript only expose what's in their HTML, and pure-ASCII faces (`^_^`) are never picked up — add those by hand. CLI: `sticker.py kaomoji list | add | edit | rm | groups | import <url> [--all] | sources`.
 
 ## Social preview
 

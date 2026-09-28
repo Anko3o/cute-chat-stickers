@@ -147,6 +147,10 @@
  *
  *   ChatDrawer.create({ button, anchor, title, store: { list, add, edit, remove }, cell, onPick, fields })
  *
+ * Groups: if the store has `groups` ({list, add, rename, remove, reorder}), items carry a group id, the grid is split by
+ * group in the user's order ("Ungrouped" last), forms get package-drawn group pills (plus "+ New group"), and
+ * "…" gets "Manage groups" (new · rename · delete → items become ungrouped · move up / down).
+ *
  * Needs core/press.js for long-press on cells (right-click works without it). Zero dependencies. CC BY-NC-SA 4.0.
  */
 (function (global) {
@@ -160,16 +164,25 @@
     x: I('<path d="M18 6 6 18M6 6l12 12"/>'),
     back: I('<path d="m15 18-6-6 6-6"/>'),
     tag: I('<path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4Z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>'),   // lucide tag
+    up: I('<path d="m18 15-6-6-6 6"/>'),
+    down: I('<path d="m6 9 6 6 6-6"/>'),
+    check: I('<path d="M20 6 9 17l-5-5"/>'),
     trash: I('<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>'),
   };
 
   var L10N = {
     zh: { search: "搜索", add: "添加", more: "更多", organize: "整理（选一格修改或删除）", edit: "修改", del: "删除", cancel: "取消", save: "保存",
       back: "返回", loading: "在翻抽屉…", failed: "没读到，等会儿再试", empty: "还空着——点右上角的 ＋ 加第一个", noHit: "没搜到",
-      pickOne: "点一格来修改或删除", confirmDel: function (n) { return "删掉「" + n + "」？"; } },
+      pickOne: "点一格来修改或删除", confirmDel: function (n) { return "删掉「" + n + "」？"; },
+      group: "分组", ungrouped: "未分组", newGroup: "新分组", groupPh: "分组名", manageGroups: "管理分组", addGroup: "添加",
+      noGroups: "还没有分组——在下面起一个名字", up: "上移", down: "下移", rename: "点名字改名",
+      confirmDelGroup: function (n, c) { return "删掉分组「" + n + "」？" + (c ? "里面的 " + c + " 个会并入「未分组」。" : ""); } },
     en: { search: "Search", add: "Add", more: "More", organize: "Organize (pick one to edit or delete)", edit: "Edit", del: "Delete", cancel: "Cancel", save: "Save",
       back: "Back", loading: "Loading…", failed: "Couldn't load, try again later", empty: "Empty — tap + at the top to add the first one", noHit: "No match",
-      pickOne: "Tap one to edit or delete", confirmDel: function (n) { return "Delete \"" + n + "\"?"; } },
+      pickOne: "Tap one to edit or delete", confirmDel: function (n) { return "Delete \"" + n + "\"?"; },
+      group: "Group", ungrouped: "Ungrouped", newGroup: "New group", groupPh: "Group name", manageGroups: "Manage groups", addGroup: "Add",
+      noGroups: "No groups yet — name one below", up: "Move up", down: "Move down", rename: "Tap the name to rename",
+      confirmDelGroup: function (n, c) { return "Delete the group \"" + n + "\"?" + (c ? " Its " + c + " item(s) become ungrouped." : ""); } },
   };
 
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
@@ -184,15 +197,24 @@
       cell: function (it) { return esc(it.name || it.text); }, cellTitle: null, groupOf: null, nameOf: null,
       searchText: null, onPick: null, fields: { add: [], edit: [] }, menu: [], lang: null, labels: null,
       onSubmitError: null,   // (err, drawer) => true if handled (e.g. a duplicate: jump to the existing one)
+      embed: null,           // element: live inside a host (ChatStickers.panel tabs) instead of floating on its own
+      host: null,            // { show(kind), hide() } — the host that owns open / close when embedded
     }, options || {});
+    var embed = $(o.embed);
     var L = Object.assign({}, L10N[lang(o)] || L10N.en, o.labels || {});
-    var btn = $(o.button), anchor = $(o.anchor) || (btn && (btn.closest("form") || btn.parentElement));
+    var btn = embed ? null : $(o.button), anchor = $(o.anchor) || (btn && (btn.closest("form") || btn.parentElement));
     var items = null, loading = false, selecting = false, selected = null, q = "", mode = "grid", press = null;
+    var G = o.store && o.store.groups ? o.store.groups : null, groups = [];
     function nameOf(it) { return o.nameOf ? o.nameOf(it) : (it.name || it.text || ""); }
+    function groupById(id) { return id == null || id === "" ? null : groups.find(function (g) { return String(g.id) === String(id); }) || null; }
+    function groupName(it) {
+      if (!G) return o.groupOf ? (o.groupOf(it) || "") : "";
+      var g = groupById(it.group); return g ? g.name : "";
+    }
 
     var root = document.createElement("div");
-    root.className = "cd-drawer cd-" + o.kind;
-    root.hidden = true;
+    root.className = "cd-drawer cd-" + o.kind + (embed ? " cd-embedded" : "");
+    root.hidden = !embed;
     root.setAttribute("role", "dialog");
     root.setAttribute("aria-label", o.title);
     root.innerHTML =
@@ -210,12 +232,12 @@
       '<div class="cd-viewbar" hidden><button type="button" class="cd-ib" data-cd="back" aria-label="' + esc(L.back) + '">' + ICON.back + '</button><span class="cd-view-t"></span></div>' +
       '<div class="cd-menu" role="menu" hidden></div>' +
       '<div class="cd-body"><div class="cd-grid" role="listbox" aria-label="' + esc(o.title) + '"></div><div class="cd-view" hidden></div></div>';
-    document.body.appendChild(root);
+    (embed || document.body).appendChild(root);
     var grid = root.querySelector(".cd-grid"), view = root.querySelector(".cd-view"), menu = root.querySelector(".cd-menu");
     var input = root.querySelector(".cd-search input");
 
     function place() {
-      if (!anchor) return;
+      if (!anchor || embed) return;
       var r = anchor.getBoundingClientRect(), vw = window.innerWidth;
       var w = Math.min(520, vw - 20, Math.max(300, r.width));
       var left = Math.max(10, Math.min(vw - w - 10, r.left));
@@ -226,7 +248,7 @@
 
     function matches(it) {
       if (!q) return true;
-      var hay = o.searchText ? o.searchText(it) : [it.name, it.desc, it.text, it.group].concat(it.tags || [], it.aliases || []).join(" ");
+      var hay = o.searchText ? o.searchText(it) : [it.name, it.desc, it.text, groupName(it)].concat(it.tags || [], it.aliases || []).join(" ");
       return String(hay).toLowerCase().indexOf(q.toLowerCase()) >= 0;
     }
 
@@ -237,10 +259,15 @@
       var list = items.filter(matches);
       if (!items.length) { grid.innerHTML = '<p class="cd-note">' + esc(L.empty) + "</p>"; return; }
       if (!list.length) { grid.innerHTML = '<p class="cd-note">' + esc(L.noHit) + "</p>"; return; }
-      var html = [], lastGroup = null;
+      var html = [], lastGroup = null, heads = G ? groups.length > 0 : !!o.groupOf;
+      if (G && heads) {                                // the user's group order, ungrouped last; inside a group, oldest first
+        var rank = {}; groups.forEach(function (g, i) { rank[g.id] = i; });
+        var r = function (it) { var g = groupById(it.group); return g ? rank[g.id] : 1e9; };
+        list = list.map(function (it, i) { return [it, i]; }).sort(function (a, b) { return (r(a[0]) - r(b[0])) || (a[1] - b[1]); }).map(function (x) { return x[0]; });
+      }
       list.forEach(function (it) {
-        var g = o.groupOf ? (o.groupOf(it) || "") : null;
-        if (g !== null && g !== lastGroup) { html.push('<h3 class="cd-group">' + esc(g || "·") + "</h3>"); lastGroup = g; }
+        var g = heads ? (groupName(it) || L.ungrouped) : null;
+        if (g !== null && g !== lastGroup) { html.push('<h3 class="cd-group">' + esc(g) + "</h3>"); lastGroup = g; }
         var on = selected && selected.id === it.id;
         html.push('<button type="button" class="cd-cell' + (on ? " on" : "") + '" data-id="' + esc(it.id) + '" title="' + esc(o.cellTitle ? o.cellTitle(it) : nameOf(it)) + '">' + o.cell(it) + "</button>");
       });
@@ -259,7 +286,8 @@
     function reload() {
       if (!o.store) return Promise.resolve();
       loading = true; paint();
-      return Promise.resolve(o.store.list("")).then(function (list) { items = list || []; })
+      return Promise.all([o.store.list(""), G ? Promise.resolve(G.list()).catch(function () { return []; }) : null])
+        .then(function (r) { items = r[0] || []; if (G) groups = (r[1] || []).slice().sort(function (a, b) { return (a.order || 0) - (b.order || 0); }); })
         .catch(function () { items = null; })
         .then(function () { loading = false; paint(); });
     }
@@ -284,8 +312,6 @@
     function form(fields, initial, submitLabel, onSubmit) {
       var f = document.createElement("form");
       f.className = "cd-form";
-      var groups = items ? Array.from(new Set(items.map(function (it) { return o.groupOf ? o.groupOf(it) : ""; }).filter(Boolean))) : [];
-      var dl = "cd-dl-" + Math.random().toString(36).slice(2);
       f.innerHTML = fields.map(function (fd) {
         var v = initial ? initial[fd.key] : "";
         if (fd.type === "tags" && Array.isArray(v)) v = v.join(", ");
@@ -293,12 +319,17 @@
         var ctl;
         if (fd.type === "file") ctl = '<input type="file" name="' + fd.key + '" accept="' + esc(fd.accept || "image/png,image/jpeg,image/gif,image/webp") + '"' + req + '><img class="cd-preview" alt="" hidden>';
         else if (fd.type === "textarea") ctl = '<textarea name="' + fd.key + '" rows="2"' + ph + req + mx + ">" + esc(v) + "</textarea>";
-        else ctl = '<input type="text" name="' + fd.key + '" value="' + esc(v) + '"' + ph + req + mx + (fd.type === "group" ? ' list="' + dl + '"' : "") + ">";
+        else if (fd.type === "group") return G ? '<div class="cd-field"><span>' + esc(fd.label || L.group) + '</span><div data-pills="' + fd.key + '"></div></div>' : "";
+        else ctl = '<input type="text" name="' + fd.key + '" value="' + esc(v) + '"' + ph + req + mx + ">";
         return '<label class="cd-field"><span>' + esc(fd.label) + "</span>" + ctl + "</label>";
       }).join("") +
-        '<datalist id="' + dl + '">' + groups.map(function (g) { return '<option value="' + esc(g) + '">'; }).join("") + "</datalist>" +
         '<p class="cd-err" hidden></p>' +
         '<div class="cd-row"><button type="submit" class="cd-btn cd-primary">' + esc(submitLabel) + '</button><button type="button" class="cd-btn" data-cd="back">' + esc(L.cancel) + "</button></div>";
+      var pickers = {};
+      f.querySelectorAll("[data-pills]").forEach(function (slot) {
+        var p = pills(initial ? initial[slot.dataset.pills] : (o.defaultGroup != null ? o.defaultGroup : null));
+        slot.replaceWith(p.el); pickers[slot.dataset.pills] = p;
+      });
       var fileData = "";
       var file = f.querySelector("input[type=file]");
       if (file) file.addEventListener("change", function () {
@@ -318,10 +349,14 @@
         var out = {};
         fields.forEach(function (fd) {
           if (fd.type === "file") out[fd.key] = fileData;
+          else if (fd.type === "group") { if (pickers[fd.key]) out[fd.key] = pickers[fd.key].value(); }
           else { var v = f.elements[fd.key].value.trim(); out[fd.key] = fd.type === "tags" ? v.split(/[,，]/).map(function (s) { return s.trim(); }).filter(Boolean) : v; }
         });
         var sb = f.querySelector(".cd-primary"); sb.disabled = true;
-        Promise.resolve(onSubmit(out)).then(function () { back(); unselect(); return reload(); })
+        var keys = Object.keys(pickers);
+        Promise.all(keys.map(function (k) { return ensureGroup(out[k]); }))
+          .then(function (ids) { keys.forEach(function (k, i) { out[k] = ids[i]; }); return onSubmit(out); })
+          .then(function () { back(); unselect(); return reload(); })
           .catch(function (err) {
             if (o.onSubmitError && o.onSubmitError(err, api)) return;
             var p = f.querySelector(".cd-err"); p.textContent = String((err && err.message) || err); p.hidden = false;
@@ -329,6 +364,139 @@
           .then(function () { sb.disabled = false; });
       });
       return f;
+    }
+
+    /* Group pills drawn by the package: "Ungrouped", every group in order, then "+ New group" (turns into an inline input).
+       value() → null | {id} | {name} (a new name; ensureGroup() creates it on save). */
+    function pills(initialId, onChange) {             // initialId: a group id, or a value from another picker
+      var el = document.createElement("div");
+      el.className = "cd-pills"; el.setAttribute("role", "radiogroup"); el.setAttribute("aria-label", L.group);
+      var cur = null, fresh = [];
+      if (initialId && typeof initialId === "object") { cur = initialId; if (initialId.name != null) fresh.push(initialId.name); }
+      else if (groupById(initialId)) cur = { id: groupById(initialId).id };
+      function same(a, b) { return (!a && !b) || (a && b && (a.id != null ? String(a.id) === String(b.id) : a.name === b.name)); }
+      function pill(v, label) {
+        return '<button type="button" class="cd-pill' + (same(v, cur) ? " on" : "") + '" role="radio" aria-checked="' + (same(v, cur) ? "true" : "false") + '" data-v="' + esc(JSON.stringify(v)) + '">' + esc(label) + "</button>";
+      }
+      function draw() {
+        el.innerHTML = pill(null, L.ungrouped) +
+          groups.map(function (g) { return pill({ id: g.id }, g.name); }).join("") +
+          fresh.map(function (n) { return pill({ name: n }, n); }).join("") +
+          '<button type="button" class="cd-pill cd-pill-new" data-new="1">' + ICON.plus + "<span>" + esc(L.newGroup) + "</span></button>";
+      }
+      function set(v) { cur = v; draw(); if (onChange) onChange(cur); }
+      function edit() {
+        var nb = el.querySelector(".cd-pill-new");
+        var box = document.createElement("span");
+        box.className = "cd-pill-edit";
+        box.innerHTML = '<input type="text" maxlength="20" enterkeyhint="done" placeholder="' + esc(L.groupPh) + '" aria-label="' + esc(L.newGroup) + '"><button type="button" aria-label="' + esc(L.save) + '">' + ICON.check + "</button>";
+        nb.replaceWith(box);
+        var inp = box.querySelector("input"), done = false;
+        function commit() {
+          if (done) return; done = true;
+          var n = inp.value.split(/\s+/).join(" ").trim().slice(0, 20);
+          if (!n) return draw();
+          var g = groups.find(function (x) { return x.name === n; });
+          if (g) return set({ id: g.id });
+          if (fresh.indexOf(n) < 0) fresh.push(n);
+          set({ name: n });
+        }
+        inp.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done = true; draw(); }
+        });
+        inp.addEventListener("blur", function () { setTimeout(commit, 120); });
+        box.querySelector("button").addEventListener("click", commit);
+        setTimeout(function () { inp.focus(); }, 20);
+      }
+      el.addEventListener("click", function (e) {
+        if (e.target.closest(".cd-pill-new")) return edit();
+        var b = e.target.closest(".cd-pill[data-v]");
+        if (b) set(JSON.parse(b.dataset.v));
+      });
+      draw();
+      return { el: el, value: function () { return cur; }, set: set };
+    }
+
+    /* null | {id} | {name} | id | name → a group id (creating the group if it's new), or null. */
+    function ensureGroup(v) {
+      if (v == null || v === "" || !G) return Promise.resolve(G ? null : v);
+      if (typeof v !== "object") v = groupById(v) ? { id: v } : { name: String(v) };
+      if (v.id != null) return Promise.resolve(v.id);
+      var hit = groups.find(function (g) { return g.name === v.name; });
+      if (hit) return Promise.resolve(hit.id);
+      return Promise.resolve(G.add(v.name)).then(function (g) {
+        g = (g && g.group) || g; groups.push(g); return g.id;
+      }, function (err) {
+        var d = err && err.data && err.data.duplicate;
+        if (d) { groups.push(d); return d.id; }
+        throw err;
+      });
+    }
+
+    function refreshGroups() {
+      return Promise.resolve(G.list()).then(function (l) { groups = (l || []).slice().sort(function (a, b) { return (a.order || 0) - (b.order || 0); }); });
+    }
+
+    /* "…" → Manage groups: rename (tap the name), move up / down, delete (members become ungrouped), add. */
+    function groupsView() {
+      var node = document.createElement("div");
+      node.className = "cd-groups";
+      function fail(err) { var p = node.querySelector(".cd-err"); if (p) { p.textContent = String((err && err.message) || err); p.hidden = false; } }
+      function after(p) { return Promise.resolve(p).then(function () { return Promise.all([refreshGroups(), reload()]); }).then(draw, fail); }
+      function draw() {
+        node.innerHTML = (groups.length ? groups.map(function (g, i) {
+          return '<div class="cd-grow" data-gid="' + esc(g.id) + '">' +
+            '<span class="cd-grow-n" role="button" tabindex="0" title="' + esc(L.rename) + '">' + esc(g.name) + "</span>" +
+            '<span class="cd-grow-c">' + esc(g.count != null ? g.count : "") + "</span>" +
+            '<button type="button" class="cd-ib" data-g="up" aria-label="' + esc(L.up) + '"' + (i === 0 ? " disabled" : "") + ">" + ICON.up + "</button>" +
+            '<button type="button" class="cd-ib" data-g="down" aria-label="' + esc(L.down) + '"' + (i === groups.length - 1 ? " disabled" : "") + ">" + ICON.down + "</button>" +
+            '<button type="button" class="cd-ib cd-danger" data-g="del" aria-label="' + esc(L.del) + '">' + ICON.trash + "</button></div>";
+        }).join("") : '<p class="cd-note">' + esc(L.noGroups) + "</p>") +
+          '<form class="cd-gadd"><input type="text" maxlength="20" placeholder="' + esc(L.groupPh) + '" aria-label="' + esc(L.newGroup) + '"><button type="submit" class="cd-btn cd-small cd-primary">' + esc(L.addGroup) + "</button></form>" +
+          '<p class="cd-err" hidden></p>';
+      }
+      function rename(span) {
+        var row = span.closest(".cd-grow"), g = groupById(row.dataset.gid), inp = document.createElement("input");
+        inp.type = "text"; inp.maxLength = 20; inp.value = g.name;
+        span.replaceWith(inp); inp.focus(); inp.select();
+        var done = false;
+        function commit() {
+          if (done) return; done = true;
+          var n = inp.value.split(/\s+/).join(" ").trim();
+          if (!n || n === g.name) return draw();
+          after(G.rename(g.id, n));
+        }
+        inp.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done = true; draw(); }
+        });
+        inp.addEventListener("blur", commit);
+      }
+      node.addEventListener("click", function (e) {
+        var n = e.target.closest(".cd-grow-n");
+        if (n) return rename(n);
+        var b = e.target.closest("[data-g]");
+        if (!b) return;
+        var row = b.closest(".cd-grow"), g = groupById(row.dataset.gid), i = groups.indexOf(g);
+        if (b.dataset.g === "del") {
+          if (confirm(L.confirmDelGroup(g.name, g.count || 0))) after(G.remove(g.id));
+          return;
+        }
+        var ids = groups.map(function (x) { return x.id; }), j = i + (b.dataset.g === "up" ? -1 : 1);
+        if (j < 0 || j >= ids.length) return;
+        ids.splice(j, 0, ids.splice(i, 1)[0]);
+        after(G.reorder(ids));
+      });
+      node.addEventListener("keydown", function (e) { var n = e.target.closest && e.target.closest(".cd-grow-n"); if (n && e.key === "Enter") { e.preventDefault(); rename(n); } });
+      node.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var inp = node.querySelector(".cd-gadd input"), n = inp.value.split(/\s+/).join(" ").trim();
+        if (n) after(G.add(n));
+      });
+      refreshGroups().then(draw, function () { draw(); });
+      draw();
+      showView(L.manageGroups, node);
     }
 
     /* Highlight one cell and scroll to it, with a short note on top (used for "already have it"). */
@@ -361,7 +529,7 @@
     }
 
     function openMenu() {
-      var entries = [{ id: "organize", label: L.organize }].concat(o.menu || []);
+      var entries = [{ id: "organize", label: L.organize }].concat(G ? [{ id: "groups", label: L.manageGroups }] : [], o.menu || []);
       menu.innerHTML = entries.map(function (m) { return '<button type="button" role="menuitem" class="cd-mi" data-mi="' + esc(m.id) + '">' + esc(m.label) + "</button>"; }).join("");
       menu.hidden = false;
     }
@@ -372,6 +540,7 @@
       if (mi) {
         closeMenu();
         if (mi.dataset.mi === "organize") return select(null);
+        if (mi.dataset.mi === "groups") return groupsView();
         var ext = (o.menu || []).find(function (m) { return m.id === mi.dataset.mi; });
         if (ext && ext.onClick) ext.onClick(api);
         return;
@@ -407,7 +576,11 @@
     }
     input.addEventListener("input", function () { q = input.value.trim(); paint(); });
 
+    /* back to the plain grid: no menu, no form, nothing selected */
+    function reset() { closeMenu(); if (mode !== "grid") back(); if (selecting) unselect(); }
+
     function open() {
+      if (embed) { if (o.host) o.host.show(o.kind); if (items === null && !loading) reload(); return; }
       all.forEach(function (d) { if (d !== api) d.close(); });
       place();
       root.hidden = false;
@@ -416,6 +589,7 @@
       if (items === null && !loading) reload();
     }
     function close() {
+      if (embed) { reset(); if (o.host) o.host.hide(); return; }
       if (root.hidden) return;
       root.classList.remove("open");
       root.hidden = true;
@@ -430,19 +604,23 @@
       btn.setAttribute("aria-expanded", "false");
       btn.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); toggle(); });
     }
-    document.addEventListener("pointerdown", function (e) {
+    if (!embed) document.addEventListener("pointerdown", function (e) {
       if (root.hidden || root.contains(e.target) || (btn && btn.contains(e.target))) return;
       close();
     });
-    window.addEventListener("keydown", function (e) { if (e.key === "Escape" && !root.hidden) close(); });
-    window.addEventListener("resize", function () { if (!root.hidden) place(); });
+    if (!embed) {
+      window.addEventListener("keydown", function (e) { if (e.key === "Escape" && !root.hidden) close(); });
+      window.addEventListener("resize", function () { if (!root.hidden) place(); });
+    }
 
     var api = {
-      root: root, open: open, close: close, toggle: toggle, reload: reload, paint: paint,
+      root: root, open: open, close: close, toggle: toggle, reload: reload, paint: paint, reset: reset,
+      loaded: function () { return items !== null || loading; },
       showView: showView, back: back, form: form, select: select, unselect: unselect, flash: flash,
       items: function () { return items || []; }, labels: L, esc: esc, icons: ICON,
+      groups: function () { return groups.slice(); }, groupName: groupName, pills: pills, ensureGroup: ensureGroup, refreshGroups: refreshGroups,
     };
-    all.push(api);
+    if (!embed) all.push(api);
     paintBars();
     return api;
   }
@@ -457,22 +635,99 @@
     try { input.focus(); } catch (_) {}
   }
 
-  /* Store backed by localStorage, seeded from a JSON file — for demos and single-device use. */
+  /* Groups kept next to the items: [{id, name, order}], items hold only the id. Older saves that stored group
+     names on the items are migrated (a group is created for each name). */
+  function migrateGroups(m) {
+    m.groups = (m.groups || []).filter(function (g) { return g && g.id != null && g.name; }).sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+    var next = m.groups.reduce(function (x, g) { return Math.max(x, (+g.id || 0) + 1); }, m.nextGroup || 1);
+    (m.items || []).forEach(function (it) {
+      var v = it.group;
+      if (v == null || v === "") { it.group = null; return; }
+      if (typeof v === "number") { if (!m.groups.some(function (g) { return g.id === v; })) it.group = null; return; }
+      var name = String(v).trim(), g = m.groups.find(function (x) { return x.name === name; });
+      if (!g) { g = { id: next++, name: name, order: m.groups.length + 1 }; m.groups.push(g); }
+      it.group = g.id;
+    });
+    m.groups.forEach(function (g, i) { g.order = i + 1; });
+    m.nextGroup = next;
+    return m;
+  }
+
+  /* Store backed by localStorage, seeded from a JSON file — for demos and single-device use. Has groups. */
   function localStore(key, seedUrl, pickList, makeItem) {
     var mem = null;
     function load() {
       if (mem) return Promise.resolve(mem);
-      try { var s = JSON.parse(localStorage.getItem(key) || "null"); if (s) { mem = s; return Promise.resolve(mem); } } catch (_) {}
+      try { var s = JSON.parse(localStorage.getItem(key) || "null"); if (s) { mem = migrateGroups(s); return Promise.resolve(mem); } } catch (_) {}
       return (seedUrl ? fetch(seedUrl).then(function (r) { return r.json(); }).catch(function () { return {}; }) : Promise.resolve({}))
-        .then(function (d) { var list = pickList(d) || []; mem = { items: list, next: list.reduce(function (m, x) { return Math.max(m, (+x.id || 0) + 1); }, 1) }; persist(); return mem; });
+        .then(function (d) {
+          var list = pickList(d) || [];
+          mem = migrateGroups({ items: list, next: list.reduce(function (m, x) { return Math.max(m, (+x.id || 0) + 1); }, 1),
+            groups: (d.groups || []).map(function (g) { return { id: g.id, name: g.name, order: g.order }; }), nextGroup: d.next_group_id || 1 });
+          persist(); return mem;
+        });
     }
     function persist() { try { localStorage.setItem(key, JSON.stringify(mem)); } catch (_) {} }
+    function dupeGroup(m, name, but) {
+      var hit = m.groups.find(function (g) { return g !== but && g.name === name; });
+      if (!hit) return null;
+      var e = new Error("group \"" + name + "\" already exists"); e.data = { duplicate: hit }; return e;
+    }
+    function cleanName(n) { n = String(n || "").split(/\s+/).join(" ").trim(); if (!n || n.length > 20) throw new Error("group name: 1-20 chars"); return n; }
+    var groups = {
+      list: function () {
+        return load().then(function (m) {
+          return m.groups.map(function (g) { return Object.assign({}, g, { count: m.items.filter(function (it) { return String(it.group) === String(g.id); }).length }); });
+        });
+      },
+      add: function (name) {
+        return load().then(function (m) {
+          name = cleanName(name); var e = dupeGroup(m, name); if (e) throw e;
+          var g = { id: m.nextGroup++, name: name, order: m.groups.length + 1 }; m.groups.push(g); persist(); return g;
+        });
+      },
+      rename: function (id, name) {
+        return load().then(function (m) {
+          var g = m.groups.find(function (x) { return String(x.id) === String(id); }); if (!g) throw new Error("no such group");
+          name = cleanName(name); var e = dupeGroup(m, name, g); if (e) throw e;
+          g.name = name; persist(); return g;
+        });
+      },
+      remove: function (id) {                          // members become ungrouped
+        return load().then(function (m) {
+          m.groups = m.groups.filter(function (x) { return String(x.id) !== String(id); });
+          m.groups.forEach(function (g, i) { g.order = i + 1; });
+          m.items.forEach(function (it) { if (String(it.group) === String(id)) it.group = null; });
+          persist();
+        });
+      },
+      reorder: function (ids) {
+        return load().then(function (m) {
+          var pos = {}; (ids || []).forEach(function (id, i) { pos[id] = i; });
+          m.groups.sort(function (a, b) { return (pos[a.id] != null ? pos[a.id] : 1e9 + a.order) - (pos[b.id] != null ? pos[b.id] : 1e9 + b.order); });
+          m.groups.forEach(function (g, i) { g.order = i + 1; });
+          persist(); return m.groups;
+        });
+      },
+    };
     return {
       list: function () { return load().then(function (m) { return m.items.slice(); }); },
       add: function (v) { return load().then(function (m) { var it = makeItem(v, m.next++); m.items.push(it); persist(); return it; }); },
       edit: function (it, v) { return load().then(function (m) { var x = m.items.find(function (y) { return y.id === it.id; }); if (x) Object.assign(x, v); persist(); return x; }); },
       remove: function (it) { return load().then(function (m) { m.items = m.items.filter(function (y) { return y.id !== it.id; }); persist(); }); },
+      groups: groups,
       _all: function () { return load(); }, _persist: persist,
+    };
+  }
+
+  /* The same group calls against the reference server: {base}/groups. */
+  function httpGroups(call, base) {
+    return {
+      list: function () { return call("GET", base + "/groups").then(function (d) { return d.groups || []; }); },
+      add: function (name) { return call("POST", base + "/groups", { name: name }).then(function (d) { return d.group; }); },
+      rename: function (id, name) { return call("PUT", base + "/groups/" + encodeURIComponent(id), { name: name }).then(function (d) { return d.group; }); },
+      remove: function (id) { return call("DELETE", base + "/groups/" + encodeURIComponent(id)); },
+      reorder: function (ids) { return call("PUT", base + "/groups", { order: ids }).then(function (d) { return d.groups; }); },
     };
   }
 
@@ -495,7 +750,17 @@
     };
   }
 
-  global.ChatDrawer = { create: create, insertAtCaret: insertAtCaret, localStore: localStore, http: http, icons: ICON, esc: esc };
+  /* Float `el` just above `anchor` (the composer), phone- and desktop-friendly. */
+  function placeAbove(el, anchor) {
+    if (!anchor) return;
+    var r = anchor.getBoundingClientRect(), vw = window.innerWidth;
+    var w = Math.min(520, vw - 20, Math.max(300, r.width));
+    el.style.left = Math.max(10, Math.min(vw - w - 10, r.left)) + "px";
+    el.style.width = w + "px";
+    el.style.bottom = Math.max(10, window.innerHeight - r.top + 8) + "px";
+  }
+
+  global.ChatDrawer = { create: create, placeAbove: placeAbove, all: all, insertAtCaret: insertAtCaret, localStore: localStore, http: http, httpGroups: httpGroups, icons: ICON, esc: esc };
 })(typeof window !== "undefined" ? window : this);
 
 /* ---- packages/emoji-bg/emoji-bg.js ---- */
@@ -1169,21 +1434,23 @@
 
 /* ---- packages/stickers/panel.js ---- */
 /*! chat-stickers · panel.js — the sticker drawer. Tap = send (or insert at the caret if you're mid-sentence);
- * add / edit / delete from the top bar. Built on core/drawer.js.
+ * add / edit / delete from the top bar; groups from "…" → "Manage groups". Built on core/drawer.js.
  *
  *   StickerPanel.init({ button: "#stickerBtn", input: "#input", send: (text) => mySend(text), api: "" })
  *
  * With `api`, it talks to packages/stickers/serve.py (or server/fastapi_example.py):
- *   GET {api}/stickers · POST {api}/stickers · PUT/DELETE {api}/stickers/<id> · GET {api}/sticker/<name>
- * Without it, pass `store` (see ChatDrawer.localStore / StickerPanel.localStore) or `listUrl` for a read-only index.json.
+ *   GET {api}/stickers · POST {api}/stickers · PUT/DELETE {api}/stickers/<id> · GET {api}/sticker/<name> ·
+ *   {api}/stickers/groups (list · add · rename · delete · reorder)
+ * Without it, pass `store` (see StickerPanel.localStore) or `listUrl` for a read-only index.json.
+ * Adding = upload a picture from this device + name / description / tags / group.
  * Zero dependencies besides core/drawer.js. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";
 
   var L10N = {
-    zh: { title: "表情包", name: "名字", namePh: "比如：兔子晕倒", desc: "一句描述", descPh: "不看图也能认出它", tags: "标签", tagsPh: "用逗号隔开", image: "图片" },
-    en: { title: "Stickers", name: "Name", namePh: "e.g. dizzy-bunny", desc: "Description", descPh: "so it can be found without seeing it", tags: "Tags", tagsPh: "comma separated", image: "Image" },
+    zh: { title: "表情包", name: "名字", namePh: "比如：兔子晕倒", desc: "一句描述", descPh: "不看图也能认出它", tags: "标签", tagsPh: "用逗号隔开", image: "图片", group: "分组" },
+    en: { title: "Stickers", name: "Name", namePh: "e.g. dizzy-bunny", desc: "Description", descPh: "so it can be found without seeing it", tags: "Tags", tagsPh: "comma separated", image: "Image", group: "Group" },
   };
 
   var drawer = null, o = null, pickCb = null;
@@ -1193,8 +1460,9 @@
     return {
       list: function (q) { return call("GET", api + "/stickers" + (q ? "?q=" + encodeURIComponent(q) : "")).then(function (d) { return d.stickers || []; }); },
       add: function (v) { return call("POST", api + "/stickers", v); },
-      edit: function (it, v) { return call("PUT", api + "/stickers/" + encodeURIComponent(it.id), { name: v.name, desc: v.desc, tags: v.tags }); },
+      edit: function (it, v) { return call("PUT", api + "/stickers/" + encodeURIComponent(it.id), { name: v.name, desc: v.desc, tags: v.tags, group: v.group }); },
       remove: function (it) { return call("DELETE", api + "/stickers/" + encodeURIComponent(it.id)); },
+      groups: global.ChatDrawer.httpGroups(call, api + "/stickers"),
     };
   }
 
@@ -1202,10 +1470,11 @@
   function localStore(indexUrl, imageBase) {
     var s = global.ChatDrawer.localStore("sticker_shelf_v1", indexUrl,
       function (d) { return (d.stickers || []).map(function (x) { return Object.assign({ aliases: [], tags: [] }, x, { src: imageBase + encodeURIComponent(x.file) }); }); },
-      function (v, id) { return { id: id, name: v.name, desc: v.desc || "", tags: v.tags || [], aliases: [], src: v.data }; });
+      function (v, id) { return { id: id, name: v.name, desc: v.desc || "", tags: v.tags || [], aliases: [], group: v.group == null ? null : v.group, src: v.data }; });
     var edit = s.edit;
     s.edit = function (it, v) {                       // renaming keeps the old name as an alias, like the server does
       var patch = { desc: v.desc, tags: v.tags };
+      if ("group" in v) patch.group = v.group;
       if (v.name && v.name !== it.name) { patch.name = v.name; patch.aliases = (it.aliases || []).concat(it.name).filter(function (a) { return a !== v.name; }); }
       return edit(it, patch);
     };
@@ -1249,11 +1518,16 @@
       { key: "name", label: T.name, placeholder: T.namePh, required: true, max: 40 },
       { key: "desc", label: T.desc, placeholder: T.descPh, max: 120 },
       { key: "tags", label: T.tags, placeholder: T.tagsPh, type: "tags" },
+      { key: "group", label: T.group, type: "group" },
     ];
+    var esc = global.ChatDrawer.esc;
     drawer = global.ChatDrawer.create({
-      kind: "stickers", button: o.button, anchor: o.anchor, title: T.title, store: store, lang: lang, labels: o.drawerLabels,
-      cell: function (it) { return '<img src="' + global.ChatDrawer.esc(srcOf(it)) + '" alt="' + global.ChatDrawer.esc(it.name) + '" loading="lazy" draggable="false">'; },
-      cellTitle: function (it) { return (it.id ? "#" + it.id + " · " : "") + (it.desc || it.name); },
+      kind: "stickers", button: o.button, anchor: o.anchor, embed: o.embed, host: o.host, title: T.title, store: store, lang: lang, labels: o.drawerLabels,
+      cell: function (it) { return '<img src="' + esc(srcOf(it)) + '" alt="' + esc(it.name) + '" loading="lazy" draggable="false">'; },
+      cellTitle: function (it) {
+        var g = drawer ? drawer.groupName(it) : "";
+        return (it.id ? "#" + it.id + " · " : "") + (it.desc || it.name) + (g ? " · " + g : "");
+      },
       fields: { add: [{ key: "data", label: T.image, type: "file", required: true }].concat(tagFields), edit: tagFields },
       onPick: onPick,
     });
@@ -1269,6 +1543,7 @@
     reload: function () { return drawer && drawer.reload(); },
     /* Open the drawer to pick one sticker for something else (e.g. a reaction); cb(tag, item). */
     pick: function (cb) { if (!drawer) return; pickCb = cb; drawer.open(); },
+    cancelPick: function () { pickCb = null; },
     localStore: localStore,
     drawer: function () { return drawer; },
   };
@@ -1280,10 +1555,11 @@
  * Tap = insert at the caret (never sends). Add / edit / delete from the top bar, same as stickers.
  * "…" → "Import from a web page": paste any kaomoji page, tick the ones you want, file them under a group.
  * Running it again on the same page (Sync) only offers what's new and never touches the ones you edited.
+ * Groups are managed from "…" → "Manage groups"; items store only a group id.
  *
  *   KaomojiBox.init({ button: "#kaomojiBtn", input: "#input", api: "" })
  *
- * With `api`: GET/POST {api}/kaomoji · PUT/DELETE {api}/kaomoji/<id> · POST {api}/kaomoji/import/preview ·
+ * With `api`: GET/POST {api}/kaomoji · PUT/DELETE {api}/kaomoji/<id> · {api}/kaomoji/groups · POST {api}/kaomoji/import/preview ·
  *             POST {api}/kaomoji/import · GET/DELETE {api}/kaomoji/sources
  * Without it: KaomojiBox.localStore(seedUrl) keeps everything in this browser (imports then need same-origin or CORS pages).
  * Built on core/drawer.js. CC BY-NC-SA 4.0.
@@ -1292,13 +1568,13 @@
   "use strict";
 
   var L10N = {
-    zh: { title: "颜文字", text: "颜文字", textPh: "૮₍ ｡• ̫ •｡ ₎ა", group: "分组", groupPh: "比如：撒娇",
+    zh: { title: "颜文字", text: "颜文字", textPh: "૮₍ ｡• ̫ •｡ ₎ა", group: "分组",
       importWeb: "从网页导入", sources: "导入来源（同步 · 删除）", url: "网页地址", urlPh: "https://… 任意颜文字网页", fetch: "抓取",
       fetching: "在抓…", found: function (n, m) { return "新的 " + n + " 条（页面上一共认出 " + m + " 条，已有的灰掉了）"; }, nothingNew: "没有新的了",
       all: "全选", none: "全不选", keep: "存进来", sync: "同步", del: "删除", noSources: "还没从网页导入过",
       lastFetched: "上次", confirmDelSource: "删掉这个来源？已经存进来的颜文字不动。",
       had: "已有", dupe: "添加失败···ᴛ ω ᴛ已经有类似的啦" },
-    en: { title: "Kaomoji", text: "Kaomoji", textPh: "૮₍ ｡• ̫ •｡ ₎ა", group: "Group", groupPh: "e.g. happy",
+    en: { title: "Kaomoji", text: "Kaomoji", textPh: "૮₍ ｡• ̫ •｡ ₎ა", group: "Group",
       importWeb: "Import from a web page", sources: "Import sources (sync · delete)", url: "Page URL", urlPh: "https://… any kaomoji page", fetch: "Fetch",
       fetching: "Fetching…", found: function (n, m) { return n + " new (" + m + " recognised on the page; ones you have are greyed out)"; }, nothingNew: "Nothing new",
       all: "All", none: "None", keep: "Keep these", sync: "Sync", del: "Delete", noSources: "Nothing imported yet",
@@ -1363,6 +1639,7 @@
       add: function (v) { return call("POST", api + "/kaomoji", { text: v.text, group: v.group }).catch(dupe); },
       edit: function (it, v) { return call("PUT", api + "/kaomoji/" + it.id, { text: v.text, group: v.group }).catch(dupe); },
       remove: function (it) { return call("DELETE", api + "/kaomoji/" + it.id); },
+      groups: global.ChatDrawer.httpGroups(call, api + "/kaomoji"),
       preview: function (url) { return call("POST", api + "/kaomoji/import/preview", { url: url }); },
       commit: function (p) { return call("POST", api + "/kaomoji/import", p); },
       sources: function () { return call("GET", api + "/kaomoji/sources").then(function (d) { return d.sources || []; }); },
@@ -1374,7 +1651,7 @@
     var SRC = "kaomoji_sources_v1";
     var s = global.ChatDrawer.localStore("kaomoji_box_v1", seedUrl,
       function (d) { return (d.kaomoji || []).map(function (k) { return Object.assign({}, k, { key: keyOf(k.text) }); }); },
-      function (v, id) { return { id: id, text: v.text, key: keyOf(v.text), group: v.group || "" }; });
+      function (v, id) { return { id: id, text: v.text, key: keyOf(v.text), group: v.group == null ? null : v.group }; });
     function srcs() { try { return JSON.parse(localStorage.getItem(SRC) || "[]"); } catch (_) { return []; } }
     function saveSrcs(l) { try { localStorage.setItem(SRC, JSON.stringify(l)); } catch (_) {} }
     function clash(m, text, but) {
@@ -1419,7 +1696,7 @@
         (p.items || []).forEach(function (it) {
           var k = keyOf(it.text);
           if (have.has(k)) return;
-          m.items.push({ id: m.next++, text: it.text, key: k, group: it.group || "", source: { url: p.url, fetched_at: p.fetched_at } });
+          m.items.push({ id: m.next++, text: it.text, key: k, group: it.group == null ? null : it.group, source: { url: p.url, fetched_at: p.fetched_at } });
           have.add(k);
         });
         s._persist();
@@ -1460,7 +1737,6 @@
 
   function pickView(pv) {
     var esc = global.ChatDrawer.esc;
-    var groups = Array.from(new Set(drawer.items().map(function (k) { return k.group; }).filter(Boolean)));
     var c = (pv.candidates || []).map(function (x) { return typeof x === "string" ? { text: x, exists: false } : x; });
     var fresh = c.filter(function (x) { return !x.exists; }).length;
     var node = el('<form class="cd-form kb-pick">' +
@@ -1471,22 +1747,26 @@
             ? '<label class="kb-cand kb-had" title="#' + esc(x.existing_id) + '"><input type="checkbox" disabled><span>' + esc(x.text) + '</span><em class="kb-had-t">' + esc(T.had) + "</em></label>"
             : '<label class="kb-cand"><input type="checkbox" name="c" value="' + i + '" checked><span>' + esc(x.text) + "</span></label>";
         }).join("") + "</div>" +
-        (fresh ? '<label class="cd-field"><span>' + esc(T.group) + '</span><input type="text" name="group" list="kbGroups" placeholder="' + esc(T.groupPh) + '"></label>' +
-          '<datalist id="kbGroups">' + groups.map(function (g) { return '<option value="' + esc(g) + '">'; }).join("") + "</datalist>" : "") : "") +
+        (fresh ? '<div class="cd-field"><span>' + esc(T.group) + '</span><div data-pills></div></div>' : "") : "") +
       '<p class="cd-err" hidden></p><div class="cd-row">' + (fresh ? '<button type="submit" class="cd-btn cd-primary">' + esc(T.keep) + "</button>" : "") +
       '<button type="button" class="cd-btn" data-cd="back">' + esc(drawer.labels.back) + "</button></div></form>");
     var f = node.firstChild;
+    var picker = drawer.pills(null), slot = f.querySelector("[data-pills]");
+    if (slot) slot.replaceWith(picker.el);
     f.addEventListener("click", function (e) {
       var b = e.target.closest("[data-kb]");
       if (b) f.querySelectorAll('input[name="c"]').forEach(function (x) { x.checked = b.dataset.kb === "all"; });
     });
     f.addEventListener("submit", function (e) {
       e.preventDefault();
-      var group = f.elements.group ? f.elements.group.value.trim() : "";
-      var items = Array.from(f.querySelectorAll('input[name="c"]:checked')).map(function (x) { return { text: c[+x.value].text, group: group }; });
-      Promise.resolve(store.commit({ url: pv.url, fetched_at: pv.fetched_at, items: items, offered: c.map(function (x) { return x.text; }) }))
+      var sb = f.querySelector(".cd-primary"); if (sb) sb.disabled = true;
+      drawer.ensureGroup(picker.value()).then(function (group) {
+        var items = Array.from(f.querySelectorAll('input[name="c"]:checked')).map(function (x) { return { text: c[+x.value].text, group: group }; });
+        return store.commit({ url: pv.url, fetched_at: pv.fetched_at, items: items, offered: c.map(function (x) { return x.text; }) });
+      })
         .then(function () { drawer.back(); return drawer.reload(); })
-        .catch(function (x) { var p = f.querySelector(".cd-err"); p.textContent = String((x && x.message) || x); p.hidden = false; });
+        .catch(function (x) { var p = f.querySelector(".cd-err"); p.textContent = String((x && x.message) || x); p.hidden = false; })
+        .then(function () { if (sb) sb.disabled = false; });
     });
     drawer.showView(T.importWeb, node);
   }
@@ -1514,14 +1794,13 @@
     store = o.store || (o.api != null ? httpStore(o.api, o.headers) : localStore(o.seedUrl || null));
     var fields = [
       { key: "text", label: T.text, placeholder: T.textPh, required: true, max: 80 },
-      { key: "group", label: T.group, placeholder: T.groupPh, type: "group", max: 20 },
+      { key: "group", label: T.group, type: "group" },
     ];
     drawer = global.ChatDrawer.create({
-      kind: "kaomoji", button: o.button, anchor: o.anchor, title: T.title, store: store, lang: lang, labels: o.drawerLabels,
+      kind: "kaomoji", button: o.button, anchor: o.anchor, embed: o.embed, host: o.host, title: T.title, store: store, lang: lang, labels: o.drawerLabels,
       cell: function (it) { return '<span class="kb-text">' + global.ChatDrawer.esc(it.text) + "</span>"; },
-      cellTitle: function (it) { return it.text + (it.group ? " · " + it.group : ""); },
+      cellTitle: function (it) { var g = drawer ? drawer.groupName(it) : ""; return it.text + (g ? " · " + g : ""); },
       nameOf: function (it) { return it.text; },
-      groupOf: function (it) { return it.group || ""; },
       fields: { add: fields, edit: fields },
       onSubmitError: function (err, d) {                      // same key already there: say so, jump to it
         if (!err || !err.duplicate) return false;
@@ -1544,8 +1823,132 @@
     close: function () { drawer && drawer.close(); },
     reload: function () { return drawer && drawer.reload(); },
     localStore: localStore, extract: extract, looksLikeKaomoji: looksLikeKaomoji, key: keyOf,
+    drawer: function () { return drawer; },
   };
   global.KaomojiBox = api;
+})(typeof window !== "undefined" ? window : this);
+
+/* ---- packages/core/panel.js ---- */
+/*! chat-stickers · panel.js — one entry button, one drawer, two tabs: 贴纸 | 颜文字 (stickers | kaomoji).
+ *
+ *   ChatStickers.panel({ button: "#drawerBtn", anchor: "#composer", input: "#input", send: (text) => mySend(text),
+ *                        tabs: ["stickers", "kaomoji"], remember: true, api: "/chat-stickers" })
+ *
+ * A segmented switch sits on top; each tab holds the full drawer (search + add + more) built by
+ * stickers/panel.js and kaomoji/kaomoji.js. `remember` keeps the last tab in localStorage.
+ * The old way — one button per drawer — still works: call StickerPanel.init / KaomojiBox.init with their own buttons.
+ * CC BY-NC-SA 4.0.
+ */
+(function (global) {
+  "use strict";
+
+  var I = function (d) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + "</svg>"; };
+  var TABS = {
+    stickers: { icon: I('<path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/>'), zh: "贴纸", en: "Stickers" },
+    kaomoji: { icon: I('<path d="M6 4.5C3.8 6.4 3 9 3 12s.8 5.6 3 7.5"/><path d="M18 4.5c2.2 1.9 3 4.5 3 7.5s-.8 5.6-3 7.5"/><path d="M8.6 10.2h.01M15.4 10.2h.01"/><path d="M10 14.2c1.2 1 2.8 1 4 0"/>'), zh: "颜文字", en: "Kaomoji" },
+  };
+  var KEY = "chat_stickers_tab_v1";
+
+  function $(x) { return typeof x === "string" ? document.querySelector(x) : x; }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  function panel(options) {
+    var o = Object.assign({
+      button: null, anchor: null, input: null, send: null, api: null, headers: null, lang: null,
+      tabs: ["stickers", "kaomoji"], remember: true, labels: null,
+      stickers: {}, kaomoji: {},          // extra options for each tab (store, seedUrl, labels…)
+    }, options || {});
+    var lang = o.lang || (/^zh/i.test(navigator.language || "") ? "zh" : "en");
+    var tabs = (o.tabs || []).filter(function (t) {
+      return (t === "stickers" && global.StickerPanel) || (t === "kaomoji" && global.KaomojiBox);
+    });
+    if (!tabs.length) throw new Error("ChatStickers.panel: no tabs (load stickers/panel.js and/or kaomoji/kaomoji.js)");
+    var btn = $(o.button), anchor = $(o.anchor) || (btn && (btn.closest("form") || btn.parentElement));
+
+    var root = document.createElement("div");
+    root.className = "cs-panel";
+    root.hidden = true;
+    root.setAttribute("role", "dialog");
+    root.innerHTML =
+      (tabs.length > 1 ? '<div class="cs-seg" role="tablist">' + tabs.map(function (t) {
+        var name = (o.labels && o.labels[t]) || TABS[t][lang] || TABS[t].en;
+        return '<button type="button" class="cs-seg-b" role="tab" data-tab="' + t + '" aria-selected="false">' + TABS[t].icon + "<span>" + esc(name) + "</span></button>";
+      }).join("") + "</div>" : "") +
+      tabs.map(function (t) { return '<div class="cs-pane" data-pane="' + t + '" role="tabpanel" hidden></div>'; }).join("");
+    document.body.appendChild(root);
+
+    var current = null, drawers = {};
+    var host = {
+      show: function (kind) { select(kind); open(); },
+      hide: function () { close(); },
+    };
+
+    function saved() { try { return localStorage.getItem(KEY); } catch (_) { return null; } }
+    function select(kind) {
+      if (tabs.indexOf(kind) < 0) kind = tabs[0];
+      if (current && current !== kind && drawers[current]) drawers[current].reset();
+      current = kind;
+      root.querySelectorAll(".cs-seg-b").forEach(function (b) {
+        var on = b.dataset.tab === kind;
+        b.classList.toggle("on", on); b.setAttribute("aria-selected", on ? "true" : "false");
+      });
+      root.querySelectorAll(".cs-pane").forEach(function (p) { p.hidden = p.dataset.pane !== kind; });
+      if (o.remember) { try { localStorage.setItem(KEY, kind); } catch (_) {} }
+      var d = drawers[kind];
+      if (d && !d.loaded()) d.reload();
+    }
+    function open() {
+      if (!root.hidden) return;
+      (global.ChatDrawer.all || []).forEach(function (d) { d.close(); });   // standalone drawers, if any
+      global.ChatDrawer.placeAbove(root, anchor);
+      root.hidden = false;
+      requestAnimationFrame(function () { root.classList.add("open"); });
+      if (btn) btn.setAttribute("aria-expanded", "true");
+      if (!current) select((o.remember && saved()) || tabs[0]);
+      else if (drawers[current] && !drawers[current].loaded()) drawers[current].reload();
+    }
+    function close() {
+      if (root.hidden) return;
+      Object.keys(drawers).forEach(function (k) { drawers[k].reset(); });
+      root.classList.remove("open");
+      root.hidden = true;
+      if (btn) btn.setAttribute("aria-expanded", "false");
+    }
+    function toggle() { if (root.hidden) open(); else close(); }
+
+    var common = { lang: lang, api: o.api, headers: o.headers, input: o.input, host: host };
+    if (tabs.indexOf("stickers") >= 0) {
+      global.StickerPanel.init(Object.assign({}, common, { send: o.send }, o.stickers, { button: null, embed: root.querySelector('[data-pane="stickers"]') }));
+      drawers.stickers = global.StickerPanel.drawer();
+    }
+    if (tabs.indexOf("kaomoji") >= 0) {
+      global.KaomojiBox.init(Object.assign({}, common, o.kaomoji, { button: null, embed: root.querySelector('[data-pane="kaomoji"]') }));
+      drawers.kaomoji = global.KaomojiBox.drawer();
+    }
+
+    root.addEventListener("click", function (e) {
+      var b = e.target.closest(".cs-seg-b");
+      if (b) select(b.dataset.tab);
+    });
+    if (btn) {
+      btn.setAttribute("aria-expanded", "false");
+      btn.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        if (global.StickerPanel && global.StickerPanel.cancelPick) global.StickerPanel.cancelPick();   // opened by hand = normal mode
+        toggle();
+      });
+    }
+    document.addEventListener("pointerdown", function (e) {
+      if (root.hidden || root.contains(e.target) || (btn && btn.contains(e.target))) return;
+      close();
+    });
+    window.addEventListener("keydown", function (e) { if (e.key === "Escape" && !root.hidden) close(); });
+    window.addEventListener("resize", function () { if (!root.hidden) global.ChatDrawer.placeAbove(root, anchor); });
+
+    return { root: root, open: open, close: close, toggle: toggle, select: select, current: function () { return current; }, drawers: drawers };
+  }
+
+  global.ChatStickers = Object.assign(global.ChatStickers || {}, { panel: panel });
 })(typeof window !== "undefined" ? window : this);
 
 /* ---- packages/core/index.js ---- */
@@ -1553,15 +1956,15 @@
  *    empty chat area → the background (emoji-bg)
  *    a bubble        → that message (reactions: 2 × 4 grid, "+" opens your stickers)
  *    an image        → that picture's message (same grid, or your own onMedia)
- *  plus two drawers next to the composer: stickers (send) and kaomoji (insert).
+ *  plus one drawer next to the composer with two tabs: 贴纸 stickers (send) | 颜文字 kaomoji (insert).
  *
  *   ChatStickers.init({
  *     container: "#messages", me: { id: "a", name: "A", emoji: "🐰" }, others: [{ id: "b", name: "B", emoji: "🦊" }],
  *     api: "/chat-stickers",                         // one base URL for the reference server, or leave out and pass stores
- *     stickers: { button: "#stickerBtn", input: "#input", send: (text) => send(text) },
- *     kaomoji:  { button: "#kaomojiBtn", input: "#input" },
+ *     panel: { button: "#drawerBtn", anchor: "#composer", input: "#input", send: (text) => send(text) },
  *   })
- * Any of background / reactions / stickers / kaomoji can be `false`. CC BY-NC-SA 4.0.
+ * Any of background / reactions / panel can be `false`; `panel.tabs` picks ["stickers", "kaomoji"] or just one.
+ * Old style — a separate button per drawer — still works: leave `panel` out and give `stickers.button` / `kaomoji.button`. CC BY-NC-SA 4.0.
  */
 (function (global) {
   "use strict";
@@ -1587,7 +1990,7 @@
     var o = Object.assign({
       container: null, me: { id: "me", name: "", emoji: "🐰" }, others: [], bubble: ".bubble", media: "img, video, .media",
       api: null, headers: null, events: undefined, longPressMs: 500, lang: null,
-      background: {}, reactions: {}, stickers: {}, kaomoji: {}, onMedia: null,
+      background: {}, reactions: {}, panel: null, stickers: {}, kaomoji: {}, onMedia: null,
     }, opts || {});
     var api = o.api;
     var events = o.events !== undefined ? o.events : (api != null ? api + "/events" : null);
@@ -1633,10 +2036,18 @@
       });
     }
 
-    if (o.stickers && global.StickerPanel) global.StickerPanel.init(Object.assign({ lang: o.lang, api: api, headers: o.headers }, o.stickers));
-    if (o.kaomoji && global.KaomojiBox) global.KaomojiBox.init(Object.assign({ lang: o.lang, api: api, headers: o.headers }, o.kaomoji));
+    if (o.panel && global.ChatStickers.panel) {
+      // default: one button, one drawer, a 贴纸 | 颜文字 switch on top
+      out.panel = global.ChatStickers.panel(Object.assign({ lang: o.lang, api: api, headers: o.headers,
+        stickers: o.stickers || {}, kaomoji: o.kaomoji || {},
+        tabs: [o.stickers !== false && "stickers", o.kaomoji !== false && "kaomoji"].filter(Boolean) }, o.panel));
+    } else {
+      // optional: each drawer on its own button
+      if (o.stickers && o.stickers.button && global.StickerPanel) global.StickerPanel.init(Object.assign({ lang: o.lang, api: api, headers: o.headers }, o.stickers));
+      if (o.kaomoji && o.kaomoji.button && global.KaomojiBox) global.KaomojiBox.init(Object.assign({ lang: o.lang, api: api, headers: o.headers }, o.kaomoji));
+    }
     return out;
   }
 
-  global.ChatStickers = { init: init, version: "0.1.0" };
+  global.ChatStickers = Object.assign(global.ChatStickers || {}, { init: init, version: "0.1.0" });
 })(typeof window !== "undefined" ? window : this);

@@ -47,13 +47,9 @@
   </header>
   <div id="messages" aria-live="polite"></div>
   <form class="composer" id="composer" autocomplete="off">
-    <button type="button" class="cs-entry" id="stickerBtn" aria-label="表情包 / Stickers" title="表情包 / Stickers">
-      <!-- lucide: sticker -->
+    <button type="button" class="cs-entry" id="drawerBtn" aria-label="贴纸 · 颜文字 / Stickers · Kaomoji" title="贴纸 · 颜文字 / Stickers · Kaomoji">
+      <!-- lucide: sticker — one button, one drawer, two tabs -->
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/><path d="M8 13h.01M16 13h.01"/><path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1"/></svg>
-    </button>
-    <button type="button" class="cs-entry" id="kaomojiBtn" aria-label="颜文字 / Kaomoji" title="颜文字 / Kaomoji">
-      <!-- a face made of brackets: ( ˙ᵕ˙ ) as line art -->
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4.5C3.8 6.4 3 9 3 12s.8 5.6 3 7.5"/><path d="M18 4.5c2.2 1.9 3 4.5 3 7.5s-.8 5.6-3 7.5"/><path d="M8.6 10.2h.01M15.4 10.2h.01"/><path d="M10 14.2c1.2 1 2.8 1 4 0"/></svg>
     </button>
     <input id="input" placeholder="说点什么… / Say something…" enterkeyhint="send">
     <button type="submit" class="cs-entry send" aria-label="发送 / Send" title="发送 / Send">
@@ -68,7 +64,7 @@
    BroadcastChannel + localStorage, standing in for your server. ?theme=dark forces dark mode. ?reset clears it. */
 (function () {
   var qs = new URLSearchParams(location.search);
-  if (qs.has("reset")) { Object.keys(localStorage).forEach(function (k) { if (/^(demo_|sticker_shelf|kaomoji_|emoji_bg)/.test(k)) localStorage.removeItem(k); }); }
+  if (qs.has("reset")) { Object.keys(localStorage).forEach(function (k) { if (/^(demo_|sticker_|kaomoji_|emoji_bg|chat_stickers_)/.test(k)) localStorage.removeItem(k); }); }
   if (qs.get("theme")) document.documentElement.dataset.csTheme = qs.get("theme");
   var lang = qs.get("lang") || (/^zh/i.test(navigator.language) ? "zh" : "en");
   var ME = qs.get("me") === "b" ? "b" : "a", OTHER = ME === "a" ? "b" : "a";
@@ -91,14 +87,14 @@
     { id: "m3", from: "b", img: PHOTO },
     { id: "m4", from: "b", text: "长按空白处可以换背景上的 emoji" },
     { id: "m5", from: "a", text: "[[sticker:蝴蝶结]]" },
-    { id: "m6", from: "a", text: "左下两颗按钮：表情包和颜文字 ૮₍ ˶ᵔ ᵕ ᵔ˶ ₎ა" },
+    { id: "m6", from: "a", text: "左下那颗按钮：一个抽屉两个 tab，贴纸和颜文字 ૮₍ ˶ᵔ ᵕ ᵔ˶ ₎ა" },
   ] : [
     { id: "m1", from: "b", text: "The clouds are so soft today" },
     { id: "m2", from: "a", text: "Long-press this one to react" },
     { id: "m3", from: "b", img: PHOTO },
     { id: "m4", from: "b", text: "Long-press any empty spot to change the background emoji" },
     { id: "m5", from: "a", text: "[[sticker:蝴蝶结]]" },
-    { id: "m6", from: "a", text: "Two buttons by the input: stickers and kaomoji ૮₍ ˶ᵔ ᵕ ᵔ˶ ₎ა" },
+    { id: "m6", from: "a", text: "The button by the input: one drawer, two tabs — stickers and kaomoji ૮₍ ˶ᵔ ᵕ ᵔ˶ ₎ა" },
   ];
   if (!get("demo_msgs", null)) put("demo_msgs", SEED);
   if (!get("demo_rx", null)) put("demo_rx", { m1: { a: "❤️" }, m4: { a: "🫶" } });
@@ -152,9 +148,10 @@
       },
     },
     onMedia: function (img) { Reactions.open(img.closest(".photo-wrap")); },
-    stickers: { button: "#stickerBtn", anchor: "#composer", input: "#input", store: stickerStore,
+    panel: { button: "#drawerBtn", anchor: "#composer", input: "#input", tabs: ["stickers", "kaomoji"], remember: true,
       send: function (text) { addMessage({ id: "m" + Date.now(), from: ME, text: text }); } },
-    kaomoji: { button: "#kaomojiBtn", anchor: "#composer", input: "#input", seedUrl: "../packages/kaomoji/kaomoji.json" },
+    stickers: { store: stickerStore },
+    kaomoji: { seedUrl: "../packages/kaomoji/kaomoji.json" },
   });
   listeners.push(function (d) { if (d.type === "msgs") render(); });
 

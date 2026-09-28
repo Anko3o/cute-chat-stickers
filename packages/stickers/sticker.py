@@ -3,16 +3,17 @@
 """sticker-shelf — a tiny sticker library for chat pages (CLI + importable module).
 
 Images live in one folder next to an index.json that gives every sticker a stable
-number, a name, a one-line description and some tags. In chat text you write
+number, a name, a one-line description, tags and a group. In chat text you write
 [[sticker:name]] (or [[表情:name]] / [[sticker:12]]) and the page renders the image.
 
 Folder: --dir PATH, or $STICKER_DIR, or ./stickers
 
-  sticker.py add  <image> <name> ["description"] [tag,tag] [--owner WHO]
-  sticker.py list [keyword]                 search name / description / tags / aliases
-  sticker.py edit <name|id> [--name NEW] [--desc TEXT] [--tags a,b]
+  sticker.py add  <image> <name> ["description"] [tag,tag] [--group G] [--owner WHO]
+  sticker.py list [keyword]                 search name / description / tags / aliases / group
+  sticker.py edit <name|id> [--name NEW] [--desc TEXT] [--tags a,b] [--group G]
   sticker.py desc <name|id> "new description"
   sticker.py rm   <name|id>
+  sticker.py groups [add NAME | rename ID NAME | rm ID | up ID | down ID]
 
   sticker.py kaomoji list [keyword]
   sticker.py kaomoji add  "<text>" [group]
@@ -21,9 +22,14 @@ Folder: --dir PATH, or $STICKER_DIR, or ./stickers
   sticker.py kaomoji import <url> [--group G] [--all]    fetch a public page, list new candidates
                                                          (--all adds them); run again later = sync
   sticker.py kaomoji sources [rm <url>]
+  sticker.py kaomoji groups [add NAME | rename ID NAME | rm ID | up ID | down ID]
 
 Kaomoji live in <folder>/kaomoji.json; the first run copies the built-in set that ships
 in packages/kaomoji/kaomoji.json.
+
+Groups are an ordered list ({id, name, order}); each sticker / kaomoji stores only a group id
+(null = ungrouped). Deleting a group moves its members to "ungrouped". Old files that stored
+group names are migrated on load.
 
 Renaming keeps the old name in `aliases`, so old messages that say [[sticker:old]]
 still find the picture. Numbers are never reused.
@@ -43,6 +49,7 @@ from html.parser import HTMLParser
 
 OK_EXT = ("png", "jpg", "jpeg", "gif", "webp")
 BAD_NAME = re.compile(r"[/\\.:\[\]<>\"'&]")
+KEEP = object()          # "leave this field as it is" for edit()
 
 
 class ShelfError(Exception):
@@ -57,7 +64,7 @@ class DuplicateError(ShelfError):
         self.item = item
 
 
-_ZERO_WIDTH = {"\u200b", "\u200c", "\u200d", "\ufeff", "\ufe0e", "\ufe0f"}
+_ZERO_WIDTH = {"​", "‌", "‍", "﻿", "︎", "️"}
 
 
 def kaomoji_key(text):
@@ -81,10 +88,161 @@ def clean_tags(tags):
     return [t.strip() for t in (tags or []) if str(t).strip()]
 
 
+def _save_json(path, d):
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, path)                            # readers never see a half-written file
+
+
+# ── groups: an ordered list, items keep only the id ──
+def migrate_groups(d, items_key):
+    """Normalise d["groups"] to [{id, name, order}] and make every item's "group" an id or None.
+    Items that still carry a group *name* (older files) get a group created for it."""
+    clean = []
+    for i, g in enumerate(d.get("groups") or []):
+        if isinstance(g, dict) and isinstance(g.get("id"), int) and str(g.get("name") or "").strip():
+            clean.append({"id": g["id"], "name": str(g["name"]).strip(), "order": g.get("order", i + 1)})
+    clean.sort(key=lambda g: g["order"])
+    by_id = {g["id"]: g for g in clean}
+    by_name = {g["name"]: g for g in clean}
+    nxt = max([d.get("next_group_id", 1)] + [g["id"] + 1 for g in clean])
+    for it in d.get(items_key, []):
+        v = it.get("group")
+        if v in (None, "", 0) or v is False:
+            it["group"] = None
+            continue
+        if isinstance(v, int) and v in by_id:
+            continue
+        name = str(v).strip()
+        g = by_name.get(name)
+        if not g:
+            g = {"id": nxt, "name": name, "order": len(clean) + 1}
+            nxt += 1
+            clean.append(g)
+            by_name[name], by_id[g["id"]] = g, g
+        it["group"] = g["id"]
+    for i, g in enumerate(clean):
+        g["order"] = i + 1
+    d["groups"], d["next_group_id"] = clean, nxt
+    return d
+
+
+def _group_name(name):
+    name = " ".join(str(name or "").split())
+    if not name or len(name) > 20:
+        raise ShelfError("group name must be 1-20 chars")
+    return name
+
+
+def resolve_group(d, v, create=True):
+    """None / "" / 0 → None (ungrouped); an existing id (int or digits) → that id; otherwise a name,
+    found or (create=True) created."""
+    if v is None or v == "" or v == 0 or v is False:
+        return None
+    if isinstance(v, int) or (isinstance(v, str) and v.strip().isdigit()):
+        gid = int(v)
+        if any(g["id"] == gid for g in d["groups"]):
+            return gid
+        if isinstance(v, int):
+            raise ShelfError("no group #%d" % gid)
+    name = _group_name(v)
+    g = next((g for g in d["groups"] if g["name"] == name), None)
+    if not g:
+        if not create:
+            raise ShelfError("no group '%s'" % name)
+        g = {"id": d["next_group_id"], "name": name, "order": len(d["groups"]) + 1}
+        d["next_group_id"] += 1
+        d["groups"].append(g)
+    return g["id"]
+
+
+class Groups:
+    """Manage the groups of one library (a Shelf or a Kaomoji)."""
+
+    def __init__(self, lib):
+        self.lib, self.items_key = lib, lib.ITEMS
+
+    def list(self):
+        d = self.lib.load()
+        counts = {}
+        for it in d[self.items_key]:
+            counts[it.get("group")] = counts.get(it.get("group"), 0) + 1
+        return [dict(g, count=counts.get(g["id"], 0)) for g in d["groups"]]
+
+    def _get(self, d, gid):
+        g = next((g for g in d["groups"] if str(g["id"]) == str(gid).strip()), None)
+        if not g:
+            raise ShelfError("no group #%s" % gid)
+        return g
+
+    def add(self, name):
+        d = self.lib.load()
+        name = _group_name(name)
+        old = next((g for g in d["groups"] if g["name"] == name), None)
+        if old:
+            raise DuplicateError("group '%s' already exists" % name, old)
+        g = {"id": d["next_group_id"], "name": name, "order": len(d["groups"]) + 1}
+        d["next_group_id"] += 1
+        d["groups"].append(g)
+        self.lib.save(d)
+        return g
+
+    def rename(self, gid, name):
+        d = self.lib.load()
+        g, name = self._get(d, gid), _group_name(name)
+        old = next((x for x in d["groups"] if x["name"] == name and x is not g), None)
+        if old:
+            raise DuplicateError("group '%s' already exists" % name, old)
+        g["name"] = name
+        self.lib.save(d)
+        return g
+
+    def remove(self, gid):
+        """Delete a group; its members become ungrouped."""
+        d = self.lib.load()
+        g = self._get(d, gid)
+        for it in d[self.items_key]:
+            if it.get("group") == g["id"]:
+                it["group"] = None
+        d["groups"].remove(g)
+        for i, x in enumerate(d["groups"]):
+            x["order"] = i + 1
+        self.lib.save(d)
+        return g
+
+    def reorder(self, ids):
+        d = self.lib.load()
+        pos = {str(i): n for n, i in enumerate(ids or [])}
+        d["groups"].sort(key=lambda g: (pos.get(str(g["id"]), len(pos) + g["order"])))
+        for i, g in enumerate(d["groups"]):
+            g["order"] = i + 1
+        self.lib.save(d)
+        return d["groups"]
+
+    def move(self, gid, step):
+        ids = [g["id"] for g in self.lib.load()["groups"]]
+        i = next((n for n, x in enumerate(ids) if str(x) == str(gid)), None)
+        if i is None:
+            raise ShelfError("no group #%s" % gid)
+        j = max(0, min(len(ids) - 1, i + step))
+        ids.insert(j, ids.pop(i))
+        return self.reorder(ids)
+
+
+def _group_label(d, gid):
+    return next((g["name"] for g in d["groups"] if g["id"] == gid), "")
+
+
 class Shelf:
+    ITEMS = "stickers"
+
     def __init__(self, folder=None):
         self.dir = os.path.abspath(folder or os.environ.get("STICKER_DIR") or "stickers")
         self.index = os.path.join(self.dir, "index.json")
+        self.path = self.index
+        self.groups = Groups(self)
 
     # ── index file ──
     def load(self):
@@ -104,14 +262,10 @@ class Shelf:
             s.setdefault("tags", [])
             s.setdefault("aliases", [])
         d["next_id"] = nxt
-        return d
+        return migrate_groups(d, "stickers")
 
     def save(self, d):
-        os.makedirs(self.dir, exist_ok=True)
-        tmp = self.index + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(d, f, ensure_ascii=False, indent=1)
-        os.replace(tmp, self.index)                  # readers never see a half-written file
+        _save_json(self.index, d)
 
     # ── lookups ──
     @staticmethod
@@ -130,9 +284,10 @@ class Shelf:
 
     def search(self, q=""):
         q = str(q or "").strip().lower()
+        d = self.load()
         out = []
-        for s in self.load()["stickers"]:
-            hay = [s["name"], s.get("desc", "")] + s.get("tags", []) + s.get("aliases", [])
+        for s in d["stickers"]:
+            hay = [s["name"], s.get("desc", ""), _group_label(d, s.get("group"))] + s.get("tags", []) + s.get("aliases", [])
             if not q or any(q in str(h).lower() for h in hay):
                 out.append(s)
         return sorted(out, key=lambda s: s["id"])
@@ -155,14 +310,16 @@ class Shelf:
     def _taken(self, d, name, but=None):
         return any(s is not but and (s["name"] == name or name in s.get("aliases", [])) for s in d["stickers"])
 
-    def add(self, src, name, desc="", tags=None, owner=None, ext=None):
-        """src is a file path, or raw bytes together with ext."""
+    def add(self, src, name, desc="", tags=None, owner=None, ext=None, group=None):
+        """src is a file path, or raw bytes together with ext. Same name again = replace the picture."""
         name = clean_name(name)
         if isinstance(src, (bytes, bytearray)):
-            ext = (ext or "").lower().lstrip(".")
+            raw, ext = bytes(src), (ext or "").lower().lstrip(".")
         else:
             if not os.path.isfile(src):
                 raise ShelfError("file not found: %s" % src)
+            with open(src, "rb") as f:
+                raw = f.read()
             ext = src.rsplit(".", 1)[-1].lower()
         ext = "jpg" if ext == "jpeg" else ext
         if ext not in OK_EXT:
@@ -171,15 +328,12 @@ class Shelf:
         old = self.find(d, name)
         if old and old["name"] != name:
             raise ShelfError("'%s' is already an alias of #%d" % (name, old["id"]))
+        gid = resolve_group(d, group)
         os.makedirs(self.dir, exist_ok=True)
-        dst = os.path.join(self.dir, name + "." + ext)
-        if isinstance(src, (bytes, bytearray)):
-            with open(dst, "wb") as f:
-                f.write(src)
-        else:
-            shutil.copyfile(src, dst)
+        with open(os.path.join(self.dir, name + "." + ext), "wb") as f:
+            f.write(raw)
         rec = {"id": old["id"] if old else d["next_id"], "name": name, "file": name + "." + ext,
-               "desc": str(desc or ""), "tags": clean_tags(tags),
+               "desc": str(desc or ""), "tags": clean_tags(tags), "group": gid,
                "aliases": old.get("aliases", []) if old else []}
         if owner:
             rec["owner"] = str(owner)
@@ -193,7 +347,7 @@ class Shelf:
         self.save(d)
         return rec
 
-    def edit(self, key, name=None, desc=None, tags=None):
+    def edit(self, key, name=None, desc=None, tags=None, group=KEEP):
         d = self.load()
         s = self.find(d, key)
         if not s:
@@ -212,6 +366,8 @@ class Shelf:
             s["desc"] = str(desc)
         if tags is not None:
             s["tags"] = clean_tags(tags)
+        if group is not KEEP:
+            s["group"] = resolve_group(d, group)
         self.save(d)
         return s
 
@@ -231,12 +387,14 @@ class Shelf:
 class Kaomoji:
     """Text faces, grouped. Same add / edit / remove shape as the sticker shelf."""
 
+    ITEMS = "kaomoji"
     _HERE = os.path.dirname(os.path.abspath(__file__))
     BUILTIN = next((p for p in (os.path.join(_HERE, "..", "kaomoji", "kaomoji.json"), os.path.join(_HERE, "kaomoji.json")) if os.path.isfile(p)), "")
 
     def __init__(self, folder=None, path=None):
         base = os.path.abspath(folder or os.environ.get("STICKER_DIR") or "stickers")
         self.path = path or os.environ.get("KAOMOJI_FILE") or os.path.join(base, "kaomoji.json")
+        self.groups = Groups(self)
 
     def load(self):
         for fp in (self.path, self.BUILTIN):
@@ -250,14 +408,10 @@ class Kaomoji:
         for k in d["kaomoji"]:
             k["key"] = kaomoji_key(k.get("text", ""))
         d["next_id"] = max([d.get("next_id", 1)] + [k["id"] + 1 for k in d["kaomoji"] if isinstance(k.get("id"), int)])
-        return d
+        return migrate_groups(d, "kaomoji")
 
     def save(self, d):
-        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
-        tmp = self.path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(d, f, ensure_ascii=False, indent=1)
-        os.replace(tmp, self.path)
+        _save_json(self.path, d)
 
     @staticmethod
     def _text(t):
@@ -268,7 +422,8 @@ class Kaomoji:
 
     def search(self, q=""):
         q = str(q or "").strip().lower()
-        return [k for k in self.load()["kaomoji"] if not q or q in k["text"].lower() or q in str(k.get("group", "")).lower()]
+        d = self.load()
+        return [k for k in d["kaomoji"] if not q or q in k["text"].lower() or q in _group_label(d, k.get("group")).lower()]
 
     def _find(self, d, kid):
         k = next((k for k in d["kaomoji"] if str(k["id"]) == str(kid).strip()), None)
@@ -280,19 +435,19 @@ class Kaomoji:
     def _dupe(d, key, but=None):
         return next((k for k in d["kaomoji"] if k is not but and k.get("key") == key), None)
 
-    def add(self, text, group=""):
+    def add(self, text, group=None):
         d = self.load()
         text = self._text(text)
         old = self._dupe(d, kaomoji_key(text))
         if old:
             raise DuplicateError("already have it: #%d %s" % (old["id"], old["text"]), old)
-        k = {"id": d["next_id"], "text": text, "key": kaomoji_key(text), "group": str(group or "").strip()}
+        k = {"id": d["next_id"], "text": text, "key": kaomoji_key(text), "group": resolve_group(d, group)}
         d["kaomoji"].append(k)
         d["next_id"] += 1
         self.save(d)
         return k
 
-    def edit(self, kid, text=None, group=None):
+    def edit(self, kid, text=None, group=KEEP):
         d = self.load()
         k = self._find(d, kid)
         if text is not None:
@@ -301,8 +456,8 @@ class Kaomoji:
             if old:
                 raise DuplicateError("already have it: #%d %s" % (old["id"], old["text"]), old)
             k["text"], k["key"] = text, kaomoji_key(text)
-        if group is not None:
-            k["group"] = str(group).strip()
+        if group is not KEEP:
+            k["group"] = resolve_group(d, group)
         self.save(d)
         return k
 
@@ -317,8 +472,6 @@ class Kaomoji:
 # ── import kaomoji from any public web page ──
 FETCH_TIMEOUT = 10
 FETCH_MAX = 2 * 1024 * 1024
-SMALL_BLOCKS = {"li", "td", "th", "code", "button", "dd", "dt", "option"}
-BLOCK_TAGS = SMALL_BLOCKS | {"p", "div", "span", "pre", "h1", "h2", "h3", "h4", "a", "br", "tr", "section", "article"}
 
 
 def _public_url(url):
@@ -356,6 +509,10 @@ def fetch_page(url):
             raise ShelfError("page is over 2 MB")
         m = re.search(r"charset=([\w-]+)", ctype)
     return raw.decode(m.group(1) if m else "utf-8", errors="replace")
+
+
+SMALL_BLOCKS = {"li", "td", "th", "code", "button", "dd", "dt", "option"}
+BLOCK_TAGS = SMALL_BLOCKS | {"p", "div", "span", "pre", "h1", "h2", "h3", "h4", "a", "br", "tr", "section", "article"}
 
 
 class _Blocks(HTMLParser):
@@ -456,7 +613,7 @@ def extract_kaomoji(html, limit=2000):
     p.flush()
     out, seen = [], set()
     for block in p.small + p.other:
-        for piece in re.split(r"\n|\t| {2,}|\u3000{2,}", block):
+        for piece in re.split(r"\n|\t| {2,}|　{2,}", block):
             piece = " ".join(piece.split())
             if piece not in seen and looks_like_kaomoji(piece):
                 seen.add(piece)
@@ -482,10 +639,7 @@ class Sources:
         return d
 
     def save(self, d):
-        tmp = self.path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(d, f, ensure_ascii=False, indent=1)
-        os.replace(tmp, self.path)
+        _save_json(self.path, d)
 
     def get(self, url):
         return next((s for s in self.load()["sources"] if s["url"] == url), None)
@@ -494,6 +648,20 @@ class Sources:
         d = self.load()
         d["sources"] = [s for s in d["sources"] if s["url"] != url]
         self.save(d)
+
+    def remember(self, url, fetched_at, seen):
+        d = self.load()
+        s = next((s for s in d["sources"] if s["url"] == url), None)
+        if not s:
+            s = {"url": url, "added_at": fetched_at, "seen": []}
+            d["sources"].append(s)
+        s["last_fetched_at"] = fetched_at
+        s["seen"] = sorted({kaomoji_key(x) for x in s.get("seen", [])} | {kaomoji_key(x) for x in seen if x})
+        self.save(d)
+
+
+def _now():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 def import_preview(km, url):
@@ -514,13 +682,13 @@ def import_preview(km, url):
         if c["exists"]:
             c["existing_id"] = have[key]["id"]
         out.append(c)
-    return {"url": url, "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "found": len(found),
+    return {"url": url, "fetched_at": _now(), "found": len(found),
             "new": sum(1 for c in out if not c["exists"]), "candidates": out, "known_source": bool(src)}
 
 
 def import_commit(km, url, fetched_at, items, offered):
-    """items: [{text, group}] she ticked; offered: every candidate she was shown (so a sync won't offer them again).
-    Anything whose key is already there is skipped, never overwritten."""
+    """items: [{text, group}] she ticked (group = id or name); offered: every candidate she was shown
+    (so a sync won't offer them again). Anything whose key is already there is skipped, never overwritten."""
     d = km.load()
     have = {k["key"] for k in d["kaomoji"]}
     added = []
@@ -530,71 +698,16 @@ def import_commit(km, url, fetched_at, items, offered):
         if key in have:
             continue
         k = {"id": d["next_id"], "text": text, "key": key,
-             "group": str((it.get("group") if isinstance(it, dict) else "") or "").strip(),
+             "group": resolve_group(d, it.get("group") if isinstance(it, dict) else None),
              "source": {"url": url, "fetched_at": fetched_at}}
         d["kaomoji"].append(k)
         d["next_id"] += 1
         have.add(key)
         added.append(k)
     km.save(d)
-    srcs = Sources(km)
-    sd = srcs.load()
-    s = next((s for s in sd["sources"] if s["url"] == url), None)
-    if not s:
-        s = {"url": url, "added_at": fetched_at, "seen": []}
-        sd["sources"].append(s)
-    s["last_fetched_at"] = fetched_at
     offered = [(o.get("text") if isinstance(o, dict) else o) for o in (offered or [])]
-    s["seen"] = sorted({kaomoji_key(x) for x in s.get("seen", [])} | {kaomoji_key(x) for x in offered if x} | {k["key"] for k in added})
-    srcs.save(sd)
+    Sources(km).remember(url, fetched_at, offered + [k["key"] for k in added])
     return added
-
-
-def kaomoji_cli(km, args):
-    sub, args = (args[0] if args else "list"), args[1:]
-    if sub in ("list", "ls"):
-        hits = km.search(args[0] if args else "")
-        for k in hits:
-            print("#%-3d %-8s %s" % (k["id"], k.get("group", ""), k["text"]))
-        print("-- %d kaomoji in %s" % (len(hits), km.path))
-    elif sub == "add":
-        try:
-            k = km.add(args[0], args[1] if len(args) > 1 else "")
-        except DuplicateError as e:
-            raise ShelfError("添加失败···ᴛ ω ᴛ已经有类似的啦\n  #%d %s" % (e.item["id"], e.item["text"]))
-        print("added #%d %s" % (k["id"], k["text"]))
-    elif sub == "edit":
-        text, group = _pop(args, "--text"), _pop(args, "--group")
-        if text is None and group is None:
-            raise ShelfError("kaomoji edit needs --text or --group")
-        k = km.edit(args[0], text=text, group=group)
-        print("#%d %s  %s" % (k["id"], k.get("group", ""), k["text"]))
-    elif sub == "rm":
-        k = km.remove(args[0])
-        print("removed #%d %s" % (k["id"], k["text"]))
-    elif sub == "import":
-        group, take_all = _pop(args, "--group"), "--all" in args
-        args = [a for a in args if a != "--all"]
-        pv = import_preview(km, args[0])
-        for c in pv["candidates"]:
-            print("  " + c["text"] + ("   (already have #%d)" % c["existing_id"] if c["exists"] else ""))
-        print("-- %d new of %d found on the page" % (pv["new"], pv["found"]))
-        if take_all:
-            new = [c for c in pv["candidates"] if not c["exists"]]
-            added = import_commit(km, pv["url"], pv["fetched_at"], [{"text": c["text"], "group": group or ""} for c in new],
-                                  [c["text"] for c in pv["candidates"]])
-            print("added %d" % len(added))
-        else:
-            print("(nothing saved; add --all to keep them all, or pick them in the panel)")
-    elif sub == "sources":
-        srcs = Sources(km)
-        if args[:1] == ["rm"]:
-            srcs.remove(args[1])
-            print("removed source", args[1])
-        for s in srcs.load()["sources"]:
-            print("%s   last fetched %s, %d seen" % (s["url"], s.get("last_fetched_at", "-"), len(s.get("seen", []))))
-    else:
-        raise ShelfError("kaomoji: list / add / edit / rm / import / sources")
 
 
 # ── CLI ──
@@ -609,6 +722,76 @@ def _pop(argv, flag):
     return None
 
 
+def groups_cli(lib, args):
+    g = lib.groups
+    sub = args[0] if args else "list"
+    if sub == "add":
+        x = g.add(args[1])
+        print("added group #%d %s" % (x["id"], x["name"]))
+    elif sub == "rename":
+        x = g.rename(args[1], args[2])
+        print("#%d is now %s" % (x["id"], x["name"]))
+    elif sub == "rm":
+        x = g.remove(args[1])
+        print("removed group %s (its items are ungrouped now)" % x["name"])
+    elif sub in ("up", "down"):
+        g.move(args[1], -1 if sub == "up" else 1)
+    elif sub != "list":
+        raise ShelfError("groups: list / add / rename / rm / up / down")
+    for x in g.list():
+        print("#%-3d %-12s %d" % (x["id"], x["name"], x["count"]))
+
+
+def kaomoji_cli(km, args):
+    sub, args = (args[0] if args else "list"), args[1:]
+    if sub in ("list", "ls"):
+        d = km.load()
+        hits = km.search(args[0] if args else "")
+        for k in hits:
+            print("#%-3d %-8s %s" % (k["id"], _group_label(d, k.get("group")), k["text"]))
+        print("-- %d kaomoji in %s" % (len(hits), km.path))
+    elif sub == "add":
+        try:
+            k = km.add(args[0], args[1] if len(args) > 1 else None)
+        except DuplicateError as e:
+            raise ShelfError("添加失败···ᴛ ω ᴛ已经有类似的啦\n  #%d %s" % (e.item["id"], e.item["text"]))
+        print("added #%d %s" % (k["id"], k["text"]))
+    elif sub == "edit":
+        text, group = _pop(args, "--text"), _pop(args, "--group")
+        if text is None and group is None:
+            raise ShelfError("kaomoji edit needs --text or --group")
+        k = km.edit(args[0], text=text, group=KEEP if group is None else group)
+        print("#%d %s  %s" % (k["id"], _group_label(km.load(), k.get("group")), k["text"]))
+    elif sub == "rm":
+        k = km.remove(args[0])
+        print("removed #%d %s" % (k["id"], k["text"]))
+    elif sub == "groups":
+        groups_cli(km, args)
+    elif sub == "import":
+        group, take_all = _pop(args, "--group"), "--all" in args
+        args = [a for a in args if a != "--all"]
+        pv = import_preview(km, args[0])
+        for c in pv["candidates"]:
+            print("  " + c["text"] + ("   (already have #%d)" % c["existing_id"] if c["exists"] else ""))
+        print("-- %d new of %d found on the page" % (pv["new"], pv["found"]))
+        if take_all:
+            new = [c for c in pv["candidates"] if not c["exists"]]
+            added = import_commit(km, pv["url"], pv["fetched_at"], [{"text": c["text"], "group": group} for c in new],
+                                  [c["text"] for c in pv["candidates"]])
+            print("added %d" % len(added))
+        else:
+            print("(nothing saved; add --all to keep them all, or pick them in the panel)")
+    elif sub == "sources":
+        srcs = Sources(km)
+        if args[:1] == ["rm"]:
+            srcs.remove(args[1])
+            print("removed source", args[1])
+        for s in srcs.load()["sources"]:
+            print("%s   last fetched %s, %d seen" % (s["url"], s.get("last_fetched_at", "-"), len(s.get("seen", []))))
+    else:
+        raise ShelfError("kaomoji: list / add / edit / rm / groups / import / sources")
+
+
 def main(argv):
     folder = _pop(argv, "--dir")
     shelf = Shelf(folder)
@@ -616,14 +799,17 @@ def main(argv):
         sys.exit(__doc__)
     cmd, args = argv[0], argv[1:]
     if cmd == "add":
-        owner = _pop(args, "--owner")
+        owner, group = _pop(args, "--owner"), _pop(args, "--group")
         rec = shelf.add(args[0], args[1], args[2] if len(args) > 2 else "",
-                        args[3] if len(args) > 3 else None, owner)
+                        args[3] if len(args) > 3 else None, owner, group=group)
         print("added #%d %s   use: [[sticker:%s]]  or  [[sticker:%d]]" % (rec["id"], rec["name"], rec["name"], rec["id"]))
     elif cmd in ("list", "ls"):
+        d = shelf.load()
         hits = shelf.search(args[0] if args else "")
         for s in hits:
             line = "#%-3d [[sticker:%s]]  %s" % (s["id"], s["name"], s["desc"] or "(no description)")
+            if s.get("group"):
+                line += "   [" + _group_label(d, s["group"]) + "]"
             if s["tags"]:
                 line += "   #" + " #".join(s["tags"])
             if s["aliases"]:
@@ -631,14 +817,16 @@ def main(argv):
             print(line)
         print("-- %d sticker(s) in %s" % (len(hits), shelf.dir))
     elif cmd == "edit":
-        name, desc, tags = _pop(args, "--name"), _pop(args, "--desc"), _pop(args, "--tags")
-        if name is None and desc is None and tags is None:
-            raise ShelfError("edit needs --name, --desc or --tags")
-        s = shelf.edit(args[0], name=name, desc=desc, tags=tags)
+        name, desc, tags, group = _pop(args, "--name"), _pop(args, "--desc"), _pop(args, "--tags"), _pop(args, "--group")
+        if name is None and desc is None and tags is None and group is None:
+            raise ShelfError("edit needs --name, --desc, --tags or --group")
+        s = shelf.edit(args[0], name=name, desc=desc, tags=tags, group=KEEP if group is None else group)
         print("#%d %s  %s  %s" % (s["id"], s["name"], s["desc"], ",".join(s["tags"])))
     elif cmd == "desc":
         s = shelf.edit(args[0], desc=args[1])
         print("#%d %s -> %s" % (s["id"], s["name"], s["desc"]))
+    elif cmd == "groups":
+        groups_cli(shelf, args)
     elif cmd == "kaomoji":
         kaomoji_cli(Kaomoji(folder), args)
     elif cmd == "rm":

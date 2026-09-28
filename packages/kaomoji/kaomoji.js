@@ -2,10 +2,11 @@
  * Tap = insert at the caret (never sends). Add / edit / delete from the top bar, same as stickers.
  * "…" → "Import from a web page": paste any kaomoji page, tick the ones you want, file them under a group.
  * Running it again on the same page (Sync) only offers what's new and never touches the ones you edited.
+ * Groups are managed from "…" → "Manage groups"; items store only a group id.
  *
  *   KaomojiBox.init({ button: "#kaomojiBtn", input: "#input", api: "" })
  *
- * With `api`: GET/POST {api}/kaomoji · PUT/DELETE {api}/kaomoji/<id> · POST {api}/kaomoji/import/preview ·
+ * With `api`: GET/POST {api}/kaomoji · PUT/DELETE {api}/kaomoji/<id> · {api}/kaomoji/groups · POST {api}/kaomoji/import/preview ·
  *             POST {api}/kaomoji/import · GET/DELETE {api}/kaomoji/sources
  * Without it: KaomojiBox.localStore(seedUrl) keeps everything in this browser (imports then need same-origin or CORS pages).
  * Built on core/drawer.js. CC BY-NC-SA 4.0.
@@ -14,13 +15,13 @@
   "use strict";
 
   var L10N = {
-    zh: { title: "颜文字", text: "颜文字", textPh: "૮₍ ｡• ̫ •｡ ₎ა", group: "分组", groupPh: "比如：撒娇",
+    zh: { title: "颜文字", text: "颜文字", textPh: "૮₍ ｡• ̫ •｡ ₎ა", group: "分组",
       importWeb: "从网页导入", sources: "导入来源（同步 · 删除）", url: "网页地址", urlPh: "https://… 任意颜文字网页", fetch: "抓取",
       fetching: "在抓…", found: function (n, m) { return "新的 " + n + " 条（页面上一共认出 " + m + " 条，已有的灰掉了）"; }, nothingNew: "没有新的了",
       all: "全选", none: "全不选", keep: "存进来", sync: "同步", del: "删除", noSources: "还没从网页导入过",
       lastFetched: "上次", confirmDelSource: "删掉这个来源？已经存进来的颜文字不动。",
       had: "已有", dupe: "添加失败···ᴛ ω ᴛ已经有类似的啦" },
-    en: { title: "Kaomoji", text: "Kaomoji", textPh: "૮₍ ｡• ̫ •｡ ₎ა", group: "Group", groupPh: "e.g. happy",
+    en: { title: "Kaomoji", text: "Kaomoji", textPh: "૮₍ ｡• ̫ •｡ ₎ა", group: "Group",
       importWeb: "Import from a web page", sources: "Import sources (sync · delete)", url: "Page URL", urlPh: "https://… any kaomoji page", fetch: "Fetch",
       fetching: "Fetching…", found: function (n, m) { return n + " new (" + m + " recognised on the page; ones you have are greyed out)"; }, nothingNew: "Nothing new",
       all: "All", none: "None", keep: "Keep these", sync: "Sync", del: "Delete", noSources: "Nothing imported yet",
@@ -85,6 +86,7 @@
       add: function (v) { return call("POST", api + "/kaomoji", { text: v.text, group: v.group }).catch(dupe); },
       edit: function (it, v) { return call("PUT", api + "/kaomoji/" + it.id, { text: v.text, group: v.group }).catch(dupe); },
       remove: function (it) { return call("DELETE", api + "/kaomoji/" + it.id); },
+      groups: global.ChatDrawer.httpGroups(call, api + "/kaomoji"),
       preview: function (url) { return call("POST", api + "/kaomoji/import/preview", { url: url }); },
       commit: function (p) { return call("POST", api + "/kaomoji/import", p); },
       sources: function () { return call("GET", api + "/kaomoji/sources").then(function (d) { return d.sources || []; }); },
@@ -96,7 +98,7 @@
     var SRC = "kaomoji_sources_v1";
     var s = global.ChatDrawer.localStore("kaomoji_box_v1", seedUrl,
       function (d) { return (d.kaomoji || []).map(function (k) { return Object.assign({}, k, { key: keyOf(k.text) }); }); },
-      function (v, id) { return { id: id, text: v.text, key: keyOf(v.text), group: v.group || "" }; });
+      function (v, id) { return { id: id, text: v.text, key: keyOf(v.text), group: v.group == null ? null : v.group }; });
     function srcs() { try { return JSON.parse(localStorage.getItem(SRC) || "[]"); } catch (_) { return []; } }
     function saveSrcs(l) { try { localStorage.setItem(SRC, JSON.stringify(l)); } catch (_) {} }
     function clash(m, text, but) {
@@ -141,7 +143,7 @@
         (p.items || []).forEach(function (it) {
           var k = keyOf(it.text);
           if (have.has(k)) return;
-          m.items.push({ id: m.next++, text: it.text, key: k, group: it.group || "", source: { url: p.url, fetched_at: p.fetched_at } });
+          m.items.push({ id: m.next++, text: it.text, key: k, group: it.group == null ? null : it.group, source: { url: p.url, fetched_at: p.fetched_at } });
           have.add(k);
         });
         s._persist();
@@ -182,7 +184,6 @@
 
   function pickView(pv) {
     var esc = global.ChatDrawer.esc;
-    var groups = Array.from(new Set(drawer.items().map(function (k) { return k.group; }).filter(Boolean)));
     var c = (pv.candidates || []).map(function (x) { return typeof x === "string" ? { text: x, exists: false } : x; });
     var fresh = c.filter(function (x) { return !x.exists; }).length;
     var node = el('<form class="cd-form kb-pick">' +
@@ -193,22 +194,26 @@
             ? '<label class="kb-cand kb-had" title="#' + esc(x.existing_id) + '"><input type="checkbox" disabled><span>' + esc(x.text) + '</span><em class="kb-had-t">' + esc(T.had) + "</em></label>"
             : '<label class="kb-cand"><input type="checkbox" name="c" value="' + i + '" checked><span>' + esc(x.text) + "</span></label>";
         }).join("") + "</div>" +
-        (fresh ? '<label class="cd-field"><span>' + esc(T.group) + '</span><input type="text" name="group" list="kbGroups" placeholder="' + esc(T.groupPh) + '"></label>' +
-          '<datalist id="kbGroups">' + groups.map(function (g) { return '<option value="' + esc(g) + '">'; }).join("") + "</datalist>" : "") : "") +
+        (fresh ? '<div class="cd-field"><span>' + esc(T.group) + '</span><div data-pills></div></div>' : "") : "") +
       '<p class="cd-err" hidden></p><div class="cd-row">' + (fresh ? '<button type="submit" class="cd-btn cd-primary">' + esc(T.keep) + "</button>" : "") +
       '<button type="button" class="cd-btn" data-cd="back">' + esc(drawer.labels.back) + "</button></div></form>");
     var f = node.firstChild;
+    var picker = drawer.pills(null), slot = f.querySelector("[data-pills]");
+    if (slot) slot.replaceWith(picker.el);
     f.addEventListener("click", function (e) {
       var b = e.target.closest("[data-kb]");
       if (b) f.querySelectorAll('input[name="c"]').forEach(function (x) { x.checked = b.dataset.kb === "all"; });
     });
     f.addEventListener("submit", function (e) {
       e.preventDefault();
-      var group = f.elements.group ? f.elements.group.value.trim() : "";
-      var items = Array.from(f.querySelectorAll('input[name="c"]:checked')).map(function (x) { return { text: c[+x.value].text, group: group }; });
-      Promise.resolve(store.commit({ url: pv.url, fetched_at: pv.fetched_at, items: items, offered: c.map(function (x) { return x.text; }) }))
+      var sb = f.querySelector(".cd-primary"); if (sb) sb.disabled = true;
+      drawer.ensureGroup(picker.value()).then(function (group) {
+        var items = Array.from(f.querySelectorAll('input[name="c"]:checked')).map(function (x) { return { text: c[+x.value].text, group: group }; });
+        return store.commit({ url: pv.url, fetched_at: pv.fetched_at, items: items, offered: c.map(function (x) { return x.text; }) });
+      })
         .then(function () { drawer.back(); return drawer.reload(); })
-        .catch(function (x) { var p = f.querySelector(".cd-err"); p.textContent = String((x && x.message) || x); p.hidden = false; });
+        .catch(function (x) { var p = f.querySelector(".cd-err"); p.textContent = String((x && x.message) || x); p.hidden = false; })
+        .then(function () { if (sb) sb.disabled = false; });
     });
     drawer.showView(T.importWeb, node);
   }
@@ -236,14 +241,13 @@
     store = o.store || (o.api != null ? httpStore(o.api, o.headers) : localStore(o.seedUrl || null));
     var fields = [
       { key: "text", label: T.text, placeholder: T.textPh, required: true, max: 80 },
-      { key: "group", label: T.group, placeholder: T.groupPh, type: "group", max: 20 },
+      { key: "group", label: T.group, type: "group" },
     ];
     drawer = global.ChatDrawer.create({
-      kind: "kaomoji", button: o.button, anchor: o.anchor, title: T.title, store: store, lang: lang, labels: o.drawerLabels,
+      kind: "kaomoji", button: o.button, anchor: o.anchor, embed: o.embed, host: o.host, title: T.title, store: store, lang: lang, labels: o.drawerLabels,
       cell: function (it) { return '<span class="kb-text">' + global.ChatDrawer.esc(it.text) + "</span>"; },
-      cellTitle: function (it) { return it.text + (it.group ? " · " + it.group : ""); },
+      cellTitle: function (it) { var g = drawer ? drawer.groupName(it) : ""; return it.text + (g ? " · " + g : ""); },
       nameOf: function (it) { return it.text; },
-      groupOf: function (it) { return it.group || ""; },
       fields: { add: fields, edit: fields },
       onSubmitError: function (err, d) {                      // same key already there: say so, jump to it
         if (!err || !err.duplicate) return false;
@@ -266,6 +270,7 @@
     close: function () { drawer && drawer.close(); },
     reload: function () { return drawer && drawer.reload(); },
     localStore: localStore, extract: extract, looksLikeKaomoji: looksLikeKaomoji, key: keyOf,
+    drawer: function () { return drawer; },
   };
   global.KaomojiBox = api;
 })(typeof window !== "undefined" ? window : this);

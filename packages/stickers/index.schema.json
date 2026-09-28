@@ -6,6 +6,20 @@
   "required": ["stickers"],
   "properties": {
     "next_id": { "type": "integer", "minimum": 1, "description": "Next number to hand out. Numbers are never reused." },
+    "next_group_id": { "type": "integer", "minimum": 1, "description": "Next group id to hand out." },
+    "groups": {
+      "type": "array",
+      "description": "Groups in the user's order. Items store only the group id; deleting a group makes its items ungrouped (group: null).",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "integer", "minimum": 1 },
+          "name": { "type": "string", "minLength": 1, "maxLength": 20 },
+          "order": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
     "stickers": {
       "type": "array",
       "items": {
@@ -18,6 +32,7 @@
           "desc": { "type": "string", "description": "One line that lets someone find it without seeing it." },
           "tags": { "type": "array", "items": { "type": "string" } },
           "aliases": { "type": "array", "items": { "type": "string" }, "description": "Old names; kept on rename so old messages still show the image." },
+          "group": { "type": ["integer", "null"], "description": "Group id from `groups`, or null for ungrouped. Older files may hold a group name; it is migrated on load." },
           "owner": { "type": "string", "description": "Optional: who added it." }
         },
         "additionalProperties": true
