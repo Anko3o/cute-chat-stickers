@@ -131,6 +131,28 @@ StickerRender.into(bubbleEl, message.text);
 
 AI 老忘记自己会发表情包，多半是因为它得先去查有哪些图。把库的名字列表（几十个名字，几百 token）放进系统提示或工具说明里，让它不查也知道有什么，再规定「一条消息最多一张」，就够了。改名时旧名留在 `aliases`，历史消息里的标记不会因为你重命名而裂图。
 
+## 给 AI 的那一半：MCP
+
+`packages/mcp/sticker_mcp.py` 是抽屉的 AI 侧接口（纯标准库，Streamable HTTP，只读，默认 `127.0.0.1:18014`）。
+接上以后 AI 能翻库、挑图、挑颜文字，不用背文件名，也不用把图塞进上下文。
+
+```sh
+STICKER_DIR=~/my-stickers python3 packages/mcp/sticker_mcp.py
+# Claude Code 的 .mcp.json：
+# { "mcpServers": { "sticker": { "type": "http", "url": "http://127.0.0.1:18014/mcp" } } }
+```
+
+| 工具 | 干什么 |
+|---|---|
+| `sticker_list(q?, group?)` | 翻库：编号 · 名字 · 一句描述 · 分组。开新对话先翻一遍 |
+| `sticker_pick(sticker, caption?)` | 挑一张：回 `[[sticker:名字]]`（聊天页用，前端换成图）；配了 `STICKER_PUBLIC_BASE` 还回一行 markdown 图片（claude.ai / ChatGPT 这种带不了凭证的聊天窗用） |
+| `kaomoji_pick(group?, q?, n?)` | 从颜文字库按分组或关键词随机挑几条 |
+
+- 图从本服务的 `/img/<编号>.<扩展名>` 出：只认编号和登记过的扩展名，名字、目录、`index.json` 都摸不到。要给官方聊天窗看图，反代把 `https://你的域名/stickers/*` 指到它，再设 `STICKER_PUBLIC_BASE=https://你的域名/stickers`。
+- `STICKER_INLINE_IMAGE=1` 时 `sticker_pick` 还会把图作为 MCP image 内容块一起返回（支持的宿主直接显示；会进上下文、按图片计费，默认关，`STICKER_INLINE_MAX` 限大小）。
+- 工具说明和服务器 instructions 里写死了「一条消息最多一张」（`MCP_ONE_PER_MESSAGE=0` 去掉）。
+- `/mcp` 本身不鉴权。放到公网前请在反代加一层：Bearer 头，或者像长随机串路径这种「URL 即密码」的做法。
+
 ## 表情包库
 
 ```sh
@@ -231,6 +253,10 @@ The old way still works: leave `panel` out and give `stickers.button` / `kaomoji
 ## Groups
 
 Stickers and kaomoji share one group system, and **groups are the only way to sort things — there are no separate tags**: one sticker (or kaomoji) can be in several groups. The add / edit form has three things: name, a one-line description, and group pills (kaomoji: the text itself + groups); editing focuses nothing, so phones don't raise the keyboard. The pills are **drawn by the package** (no native select): tap one to put the item in, tap again to take it out, several can be on, none on = ungrouped; "+ New group" turns into an inline input. The drawer is split by group in your order and an item shows up once in every group it's in, "Ungrouped" last. Search looks at the name, the description and group names (plus old names). "…" → **Manage groups**: tap a name to rename, arrows to reorder, delete (the group just comes off its items, nothing is deleted), add at the bottom. Data: an ordered `groups: [{id, name, order}]` array; items store `groups: [id, …]` (`[]` = ungrouped). Older files are upgraded on load, in the browser store too: a single `group` (id or name) and any `tags` are folded into `groups` — a tag with no group of that name gets a new one, after the existing groups — and neither is written back. Endpoints: `{api}/stickers/groups` and `{api}/kaomoji/groups`, items take `groups` (see PROTOCOL). CLI: `sticker.py [kaomoji] groups [add NAME | rename ID NAME | rm ID | up ID | down ID]`; items take `--groups a,b` (`--group` is an alias, `--groups ""` clears).
+
+## The AI half: MCP
+
+`packages/mcp/sticker_mcp.py` is the AI-side door to the drawer (stdlib only, Streamable HTTP, read-only, `127.0.0.1:18014` by default). Three tools: `sticker_list` (browse), `sticker_pick` (returns the `[[sticker:name]]` tag for your chat page, plus a markdown image line when `STICKER_PUBLIC_BASE` is set, for hosts like claude.ai that cannot send credentials with `<img>`), `kaomoji_pick` (random kaomoji by group or keyword). Images are served at `/img/<id>.<ext>` by id only. Put your own auth in front of `/mcp` before exposing it.
 
 ## Sticker shelf
 
