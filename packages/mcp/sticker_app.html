@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>sticker</title>
+<!-- sticker_pick 的官端卡片（MCP Apps）：整张卡就是一张 <img>，图从结果的 structuredContent.url 取，
+     不塞 base64（宿主会悄悄丢大块 structuredContent），gif 在沙箱 iframe 里照常动。
+     握手（claude.ai 实测过）：ui/initialize → ui/notifications/initialized → 等 tool-result。 -->
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  #s { display: block; width: auto; height: auto; max-width: min(100%, 180px); max-height: 180px;
+       margin: 2px 0; user-select: none; -webkit-user-drag: none; }
+  #s[hidden] { display: none; }
+</style>
+</head>
+<body>
+<img id="s" alt="" hidden>
+<script>
+(function () {
+  "use strict";
+  var seq = 0, pending = {}, img = document.getElementById("s");
+  function post(m) { try { window.parent.postMessage(m, "*"); } catch (e) { /* 没有宿主就算了 */ } }
+  function rpc(method, params) {
+    return new Promise(function (ok, no) {
+      var id = "app-" + (++seq);
+      pending[id] = { ok: ok, no: no };
+      post({ jsonrpc: "2.0", id: id, method: method, params: params || {} });
+    });
+  }
+  // 身高播报：图没出来报 0，出来了报到图底边
+  function reportSize() {
+    var h = img.hidden ? 0 : Math.ceil(img.getBoundingClientRect().bottom) + 2;
+    post({ jsonrpc: "2.0", method: "ui/notifications/size-changed", params: { height: h } });
+  }
+  // 先看 structuredContent.url；宿主没转 structuredContent 时，从文字结果里捞 markdown 图
+  function pick(r) {
+    r = r && (r.result || r);
+    var sc = r && (r.structuredContent || r);
+    if (sc && typeof sc.url === "string" && /^https:\/\//.test(sc.url)) return { url: sc.url, alt: sc.alt || sc.name || "" };
+    var parts = (r && r.content) || [];
+    for (var i = 0; i < parts.length; i++) {
+      var m = parts[i] && parts[i].type === "text" && /!\[([^\]]*)\]\((https:\/\/[^)\s]+)\)/.exec(parts[i].text || "");
+      if (m) return { url: m[2], alt: m[1] };
+    }
+    return null;
+  }
+  function render(r) {
+    var p = pick(r);
+    if (!p || img.getAttribute("src") === p.url) return;
+    img.onload = function () { img.hidden = false; reportSize(); };
+    img.onerror = function () { img.hidden = true; reportSize(); };
+    img.alt = p.alt;
+    img.src = p.url;
+  }
+  window.addEventListener("message", function (ev) {
+    var m = ev.data;
+    if (!m || m.jsonrpc !== "2.0") return;
+    if (m.id && pending[m.id] && !m.method) {   // 我们那条请求的回音（带 method 的是请求，不是回音）
+      var p = pending[m.id]; delete pending[m.id];
+      if (m.error) p.no(m.error); else p.ok(m.result);
+      return;
+    }
+    if (m.method === "ui/notifications/tool-result" && m.params) render(m.params);
+  });
+  if (window.ResizeObserver) new ResizeObserver(reportSize).observe(document.body);
+  rpc("ui/initialize", { protocolVersion: "2026-01-26", appInfo: { name: "sticker card", version: "1.0.0" } })
+    .then(function (res) {
+      post({ jsonrpc: "2.0", method: "ui/notifications/initialized" });
+      var tr = res && (res.toolResult || res.result);   // 有的宿主把工具结果直接放在 initialize 回执里
+      if (tr) render(tr);
+    })
+    .catch(function () { /* 不认 ui/initialize 的宿主：干等 tool-result */ });
+})();
+</script>
+</body>
+</html>

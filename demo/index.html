@@ -22,7 +22,7 @@
     flex: 1; overflow-y: auto; padding: 12px 16px 24px; display: flex; flex-direction: column; gap: 14px;
     user-select: none; -webkit-user-select: none; overscroll-behavior: contain;
   }
-  .row{ display: flex; }
+  .row{ display: flex; flex-wrap: wrap; }   /* wrap: a sticker ×N run lines its copies up under the bubble */
   .row.me{ justify-content: flex-end; }
   .bubble{
     position: relative; max-width: 74%; padding: 9px 13px; border-radius: 18px;
@@ -48,7 +48,7 @@
   <div id="messages" aria-live="polite"></div>
   <form class="composer" id="composer" autocomplete="off">
     <button type="button" class="cs-entry" id="drawerBtn" aria-label="贴纸 · 颜文字 / Stickers · Kaomoji" title="贴纸 · 颜文字 / Stickers · Kaomoji">
-      <!-- lucide: sticker — one button, one drawer, two tabs -->
+      <!-- lucide: sticker — one button; the panel docks under this composer like a keyboard -->
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/><path d="M8 13h.01M16 13h.01"/><path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1"/></svg>
     </button>
     <input id="input" placeholder="说点什么… / Say something…" enterkeyhint="send">
@@ -61,9 +61,11 @@
 <script src="../dist/chat-stickers.js"></script>
 <script>
 /* A fake chat between A and B. Open ?me=a in one tab and ?me=b in another — they sync through
-   BroadcastChannel + localStorage, standing in for your server. ?theme=dark forces dark mode. ?reset clears it. */
+   BroadcastChannel + localStorage, standing in for your server. ?theme=dark forces dark mode. ?reset clears it.
+   The sticker panel docks under the composer (panel.mode "deck"); ?panel=float shows the older floating drawer. */
 (function () {
   var qs = new URLSearchParams(location.search);
+  var PAGE_T0 = Date.now();
   if (qs.has("reset")) { Object.keys(localStorage).forEach(function (k) { if (/^(demo_|sticker_|kaomoji_|emoji_bg|chat_stickers_)/.test(k)) localStorage.removeItem(k); }); }
   if (qs.get("theme")) document.documentElement.dataset.csTheme = qs.get("theme");
   var lang = qs.get("lang") || (/^zh/i.test(navigator.language) ? "zh" : "en");
@@ -87,14 +89,16 @@
     { id: "m3", from: "b", img: PHOTO },
     { id: "m4", from: "b", text: "长按空白处可以换背景上的 emoji" },
     { id: "m5", from: "a", text: "[[sticker:蝴蝶结]]" },
-    { id: "m6", from: "a", text: "左下那颗按钮：一个抽屉两个 tab，贴纸和颜文字 ૮₍ ˶ᵔ ᵕ ᵔ˶ ₎ა" },
+    { id: "m6", from: "a", text: "左下那颗按钮：贴纸和颜文字的面板，像键盘一样升起；连点同一张会攒成 ×N 一起发 ૮₍ ˶ᵔ ᵕ ᵔ˶ ₎ა" },
+    { id: "m7", from: "b", text: "[[sticker:蝴蝶结]]×5" },
   ] : [
     { id: "m1", from: "b", text: "The clouds are so soft today" },
     { id: "m2", from: "a", text: "Long-press this one to react" },
     { id: "m3", from: "b", img: PHOTO },
     { id: "m4", from: "b", text: "Long-press any empty spot to change the background emoji" },
     { id: "m5", from: "a", text: "[[sticker:蝴蝶结]]" },
-    { id: "m6", from: "a", text: "The button by the input: one drawer, two tabs — stickers and kaomoji ૮₍ ˶ᵔ ᵕ ᵔ˶ ₎ა" },
+    { id: "m6", from: "a", text: "The button by the input: stickers and kaomoji in a panel that rises like a keyboard; tap one sticker again and again to send it ×N ૮₍ ˶ᵔ ᵕ ᵔ˶ ₎ა" },
+    { id: "m7", from: "b", text: "[[sticker:蝴蝶结]]×5" },
   ];
   if (!get("demo_msgs", null)) put("demo_msgs", SEED);
   if (!get("demo_rx", null)) put("demo_rx", { m1: { a: "❤️" }, m4: { a: "🫶" } });
@@ -117,8 +121,9 @@
         row.appendChild(w);
       } else {
         var b = document.createElement("div"); b.className = "bubble" + (m.from === ME ? "" : " rx-left");
-        StickerRender.into(b, m.text);
         row.appendChild(b);
+        // [[sticker:name]]×N: a message that just arrived plays (copies pop out under the bubble); older ones stay stacked, tap to play
+        StickerRender.into(b, m.text, { key: m.id, play: m.t > PAGE_T0 - 2000 && Date.now() - m.t < 90e3, after: b, end: m.from === ME, follow: box });
       }
       box.appendChild(row);
     });
@@ -126,7 +131,7 @@
     Object.keys(rx).forEach(function (id) { chat.setReactions(id, rx[id]); });
     box.scrollTop = box.scrollHeight;
   }
-  function addMessage(m) { var l = get("demo_msgs", []); l.push(m); put("demo_msgs", l); render(); ping("msgs"); }
+  function addMessage(m) { m.t = m.t || Date.now(); var l = get("demo_msgs", []); l.push(m); put("demo_msgs", l); render(); ping("msgs"); }
 
   var lastMine = null;
   var chat = ChatStickers.init({
@@ -148,7 +153,8 @@
       },
     },
     onMedia: function (img) { Reactions.open(img.closest(".photo-wrap")); },
-    panel: { button: "#drawerBtn", anchor: "#composer", input: "#input", tabs: ["stickers", "kaomoji"], remember: true,
+    panel: { mode: qs.get("panel") === "float" ? "float" : "deck", button: "#drawerBtn", anchor: "#composer", input: "#input",
+      tabs: ["stickers", "kaomoji"], remember: true,
       send: function (text) { addMessage({ id: "m" + Date.now(), from: ME, text: text }); } },
     stickers: { store: stickerStore },
     kaomoji: { seedUrl: "../packages/kaomoji/kaomoji.json" },

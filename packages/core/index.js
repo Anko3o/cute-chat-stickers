@@ -10,6 +10,8 @@
  *     panel: { button: "#drawerBtn", anchor: "#composer", input: "#input", send: (text) => send(text) },
  *   })
  * Any of background / reactions / panel can be `false`; `panel.tabs` picks ["stickers", "kaomoji"] or just one.
+ * `panel.mode: "deck"` docks one keyboard-style panel under the composer instead (core/deck.js): repeat taps on a
+ * sticker are sent once as [[sticker:name]]×N, the panel stays open, everything (search, upload, groups) lives inside it.
  * Old style — a separate button per drawer — still works: leave `panel` out and give `stickers.button` / `kaomoji.button`. CC BY-NC-SA 4.0.
  */
 (function (global) {
@@ -82,7 +84,12 @@
       });
     }
 
-    if (o.panel && global.ChatStickers.panel) {
+    if (o.panel && o.panel.mode === "deck" && global.ChatStickers.deck) {
+      // the keyboard-style panel docked under the composer (core/deck.js)
+      out.panel = global.ChatStickers.deck(Object.assign({ lang: o.lang, api: api, headers: o.headers, container: box,
+        stickers: o.stickers === false ? false : (o.stickers || {}), kaomoji: o.kaomoji === false ? false : (o.kaomoji || {}),
+        tabs: [o.stickers !== false && "stickers", o.kaomoji !== false && "kaomoji"].filter(Boolean) }, o.panel));
+    } else if (o.panel && global.ChatStickers.panel) {
       // default: one button, one drawer, a 贴纸 | 颜文字 switch on top
       out.panel = global.ChatStickers.panel(Object.assign({ lang: o.lang, api: api, headers: o.headers,
         stickers: o.stickers || {}, kaomoji: o.kaomoji || {},
@@ -95,5 +102,5 @@
     return out;
   }
 
-  global.ChatStickers = Object.assign(global.ChatStickers || {}, { init: init, version: "0.1.0" });
+  global.ChatStickers = Object.assign(global.ChatStickers || {}, { init: init, version: "0.2.0" });
 })(typeof window !== "undefined" ? window : this);

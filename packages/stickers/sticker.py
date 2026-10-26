@@ -13,6 +13,7 @@ Folder: --dir PATH, or $STICKER_DIR, or ./stickers
   sticker.py edit <name|id> [--name NEW] [--desc TEXT] [--groups a,b]      (--groups "" = ungrouped)
   sticker.py desc <name|id> "new description"
   sticker.py rm   <name|id>
+  sticker.py thumb <name|id ...> | --all [--max N]   shrink pictures to one long side (default 320; add does it too; needs Pillow; STICKER_MAX_SIDE=0 turns it off)
   sticker.py groups [add NAME | rename ID NAME | rm ID | up ID | down ID]
 
   sticker.py kaomoji list [keyword]
@@ -292,6 +293,69 @@ def group_names(d, it):
     return [g["name"] for g in d["groups"] if g["id"] in ids]
 
 
+# ---- 缩图（让抽屉里的图显示成差不多的尺寸）--------------------------------------------------------
+# 表情包长边统一缩到 MAX_SIDE（默认 320，STICKER_MAX_SIDE=0 关掉）。add 时自动缩，已有的用 `thumb --all`。
+# 要 Pillow；没装就原样存，不报错。动图逐帧缩，保留时长和循环。
+MAX_SIDE = int(os.environ.get("STICKER_MAX_SIDE", "320") or 0)
+
+
+def shrink_bytes(raw, ext, max_side=None):
+    """raw 图 → 长边不超过 max_side 的 raw 图（同格式）。小于上限、或没有 Pillow、或缩失败 → 原样返回。"""
+    max_side = MAX_SIDE if max_side is None else int(max_side)
+    if max_side <= 0:
+        return raw
+    try:
+        from PIL import Image, ImageSequence
+    except ImportError:
+        return raw
+    import io
+    try:
+        im = Image.open(io.BytesIO(raw))
+        w, h = im.size
+        if max(w, h) <= max_side:
+            return raw
+        scale = max_side / float(max(w, h))
+        nw, nh = max(1, round(w * scale)), max(1, round(h * scale))
+        out = io.BytesIO()
+        fmt = {"jpg": "JPEG", "png": "PNG", "gif": "GIF", "webp": "WEBP"}[ext]
+        n_frames = getattr(im, "n_frames", 1)
+
+        def gif_frame(rgba):
+            """RGBA → 调色板帧，透明像素统一指到 255 号（GIF 只有 1 位透明，alpha<128 算透明）。"""
+            alpha = rgba.getchannel("A")
+            pal = rgba.convert("RGB").quantize(colors=255, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE)
+            mask = alpha.point(lambda a: 255 if a < 128 else 0)
+            pal.paste(255, mask=mask)
+            pal.info["transparency"] = 255
+            return pal
+
+        if n_frames > 1:
+            frames, durs = [], []
+            for fr in ImageSequence.Iterator(im):
+                durs.append(fr.info.get("duration", im.info.get("duration", 80)))
+                f = fr.convert("RGBA").resize((nw, nh), Image.LANCZOS)
+                frames.append(gif_frame(f) if fmt == "GIF" else f)
+            kw = dict(save_all=True, append_images=frames[1:], duration=durs, loop=im.info.get("loop", 0))
+            if fmt == "GIF":
+                kw["disposal"] = 2
+                kw["transparency"] = 255
+            frames[0].save(out, fmt, **kw)
+        else:
+            if fmt == "JPEG":
+                f = im.convert("RGB").resize((nw, nh), Image.LANCZOS)
+                f.save(out, fmt, quality=88, optimize=True)
+            elif fmt == "GIF":
+                f = gif_frame(im.convert("RGBA").resize((nw, nh), Image.LANCZOS))
+                f.save(out, fmt, transparency=255)
+            else:
+                f = im.convert("RGBA").resize((nw, nh), Image.LANCZOS)
+                f.save(out, fmt, **({"optimize": True} if fmt == "PNG" else {"quality": 88}))
+        data = out.getvalue()
+        return data if data else raw
+    except Exception:
+        return raw
+
+
 class Shelf:
     ITEMS = "stickers"
 
@@ -389,6 +453,7 @@ class Shelf:
             groups = groups[1]
         gids = resolve_groups(d, resolve_groups(d, groups) + [group] + clean_tags(tags))
         os.makedirs(self.dir, exist_ok=True)
+        raw = shrink_bytes(raw, ext)                 # 入库就缩到统一长边（STICKER_MAX_SIDE，0 关）
         with open(os.path.join(self.dir, name + "." + ext), "wb") as f:
             f.write(raw)
         rec = {"id": old["id"] if old else d["next_id"], "name": name, "file": name + "." + ext,
@@ -430,6 +495,25 @@ class Shelf:
             s["groups"] = _apply_groups(d, s.get("groups"), groups)
         self.save(d)
         return s
+
+    def thumb(self, keys=None, max_side=None):
+        """把已有的图缩到统一长边。keys 为空＝全库。返回 [(sticker, 旧字节, 新字节)]，没变的也在里面（旧==新）。"""
+        d = self.load()
+        items = d["stickers"] if not keys else [self.find(d, k) or (_ for _ in ()).throw(ShelfError("no sticker '%s'" % k)) for k in keys]
+        out = []
+        for s in items:
+            fp = os.path.join(self.dir, s["file"])
+            if not os.path.isfile(fp):
+                continue
+            with open(fp, "rb") as f:
+                raw = f.read()
+            ext = s["file"].rsplit(".", 1)[-1].lower()
+            new = shrink_bytes(raw, "jpg" if ext == "jpeg" else ext, max_side)
+            if new is not raw and new != raw:
+                with open(fp, "wb") as f:
+                    f.write(new)
+            out.append((s, len(raw), len(new)))
+        return out
 
     def remove(self, key):
         d = self.load()
@@ -905,6 +989,20 @@ def main(argv):
     elif cmd == "rm":
         s = shelf.remove(args[0])
         print("removed #%d %s" % (s["id"], s["name"]))
+    elif cmd == "thumb":
+        mx = _pop(args, "--max")
+        keys = [] if "--all" in args else [a for a in args if a != "--all"]
+        if "--all" not in args and not keys:
+            raise ShelfError("thumb needs names/ids or --all")
+        try:
+            import PIL  # noqa: F401
+        except ImportError:
+            sys.exit("thumb needs Pillow: pip install pillow")
+        res = shelf.thumb(keys, int(mx) if mx else None)
+        changed = [(s, a, b) for s, a, b in res if b != a]
+        for s, a, b in changed:
+            print("#%-3d %-24s %7d -> %7d bytes" % (s["id"], s["name"], a, b))
+        print("-- shrunk %d / %d to max side %d" % (len(changed), len(res), int(mx) if mx else MAX_SIDE))
     else:
         sys.exit("unknown command: %s\n%s" % (cmd, __doc__))
 

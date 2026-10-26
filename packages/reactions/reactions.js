@@ -30,7 +30,7 @@
     canReact: null,           // (el, id) => boolean
     mine: null,               // (id) => array of values I already put on this message (highlighted)
     onReact: null,            // (id, value, el) => void   value "" = take mine off (tap a highlighted cell)
-    onMore: null,             // (id, el, done(value)) => void; default opens StickerPanel.pick() when present
+    onMore: null,             // (id, el, done(value)) => void; default opens StickerDeck.pick() / StickerPanel.pick() when present
     actions: [],              // optional rows under the grid: [{ id, label, icon: "<svg…>", onClick(id, el) }]
     lang: null,
     labels: null,
@@ -140,7 +140,7 @@
       var done = function (value) { if (value == null) return; cur = c2; react(value); };
       close();
       if (o.onMore) o.onMore(c2.id, c2.el, done);
-      else if (global.StickerPanel && global.StickerPanel.pick) global.StickerPanel.pick(done);
+      else { var picker = global.StickerDeck || global.StickerPanel; if (picker && picker.pick) picker.pick(done); }   // the docked deck if there is one
       return;
     }
     react(b.dataset.v);

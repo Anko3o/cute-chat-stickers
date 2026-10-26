@@ -108,7 +108,7 @@
     /* Open the drawer to pick one sticker for something else (e.g. a reaction); cb(tag, item). */
     pick: function (cb) { if (!drawer) return; pickCb = cb; drawer.open(); },
     cancelPick: function () { pickCb = null; },
-    localStore: localStore,
+    localStore: localStore, httpStore: httpStore,
     drawer: function () { return drawer; },
   };
   global.StickerPanel = api;

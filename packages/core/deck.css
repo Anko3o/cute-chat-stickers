@@ -1,0 +1,276 @@
+/* chat-stickers · deck.css — the keyboard-style sticker panel docked under the composer (core/deck.js). Uses theme.css.
+   It sits in the page flow right after the composer: give your chat a column layout (list flex: 1, composer, deck)
+   and the list shrinks when it opens, like a soft keyboard. Height: --cs-deck-h. */
+.cs-deck{
+  --cs-deck-h: clamp(280px, 38vh, 340px);
+  --cs-deck-h-typing: clamp(196px, 30vh, 240px);   /* while the search box has the keyboard (touch screens) */
+  --cs-dk-card: var(--cs-floor);                    /* cells, pills, chips */
+  --cs-dk-on: var(--cs-paper);                      /* selected pill / segment */
+  --cs-dk-field: var(--cs-paper);
+  --cs-dk-solid: var(--cs-paper);                   /* sheet and sub-pages are opaque */
+  --cs-dk-r: var(--cs-radius-sm);
+  --cs-dk-r-big: var(--cs-radius);
+  position: relative; flex: none; z-index: 2; height: 0; overflow: hidden; box-sizing: border-box;
+  color: var(--cs-ink); font-family: var(--cs-font);
+  transition: height .22s var(--cs-ease);
+}
+.cs-deck.open{ height: calc(var(--cs-deck-h) + env(safe-area-inset-bottom, 0px)); }
+.cs-deck.cs-deck-fixed{ position: fixed; left: 0; right: 0; bottom: 0; z-index: 240; }
+@media (pointer: coarse){ .cs-deck.open.cs-dk-typing{ --cs-deck-h: var(--cs-deck-h-typing); } }
+.cs-deck[hidden], .cs-deck [hidden], .cs-deck .cs-dk-off{ display: none !important; }
+.cs-deck button{ font: inherit; -webkit-tap-highlight-color: transparent; }
+
+.cs-dk-in{
+  position: absolute; left: 0; right: 0; bottom: 0;   /* anchored at the bottom: it rises like a keyboard */
+  height: calc(var(--cs-deck-h) + env(safe-area-inset-bottom, 0px)); box-sizing: border-box;
+  display: flex; flex-direction: column; overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--cs-paper); border-top: 1px solid var(--cs-line);
+  border-radius: calc(var(--cs-radius) + 4px) calc(var(--cs-radius) + 4px) 0 0;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, .06);
+}
+
+/* ── top row ── */
+.cs-dk-bar{ flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 10px 10px 6px 12px; }
+.cs-deck.cs-dk-searching .cs-dk-bar{ display: none; }
+.cs-dk-seg{ flex: none; display: inline-flex; padding: 2px; border-radius: 999px; border: 1px solid var(--cs-line); background: var(--cs-dk-card); }
+.cs-dk-seg-b{
+  height: 26px; padding: 0 10px; border: 0; border-radius: 999px; appearance: none; background: transparent;
+  font-size: 12px; line-height: 1; color: var(--cs-soft); white-space: nowrap; cursor: pointer;
+  transition: background-color .16s ease, color .16s ease;
+}
+.cs-dk-seg-b[aria-selected="true"]{ background: var(--cs-dk-on); color: var(--cs-accent); font-weight: 600; box-shadow: 0 1px 4px rgba(0, 0, 0, .08); }
+/* group pills: a row that scrolls sideways, fading out on the right to say "there's more" */
+.cs-dk-pills{
+  flex: 1 1 auto; min-width: 0; height: 30px; display: flex; align-items: center; gap: 6px;
+  overflow-x: auto; overflow-y: hidden; touch-action: pan-x; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent);
+}
+.cs-dk-pills::-webkit-scrollbar{ display: none; }
+.cs-dk-g{
+  flex: none; display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 11px; margin: 0;
+  border-radius: 999px; appearance: none; cursor: pointer; white-space: nowrap; font-size: 12px; line-height: 1; color: var(--cs-ink);
+  border: 1px solid var(--cs-line); background: var(--cs-dk-card);
+  transition: background-color .16s ease, border-color .16s ease, scale .12s ease;
+}
+.cs-dk-g:active{ scale: .94; }
+.cs-dk-g img{ width: 20px; height: 20px; margin-left: -4px; object-fit: contain; pointer-events: none; }
+.cs-dk-g[aria-selected="true"]{ border-color: var(--cs-accent); background: var(--cs-dk-on); color: var(--cs-accent); font-weight: 600; }
+.cs-dk-tool{
+  flex: none; width: 30px; height: 30px; padding: 0; display: grid; place-items: center; appearance: none; border-radius: 50%;
+  border: 1px solid var(--cs-line); background: var(--cs-dk-card); color: var(--cs-accent); cursor: pointer;
+  transition: background-color .16s ease, scale .12s ease;
+}
+.cs-dk-tool svg{ width: 17px; height: 17px; pointer-events: none; }
+.cs-dk-tool:active{ scale: .92; }
+
+/* ── search (only after 🔍) ── */
+.cs-dk-search{
+  flex: none; display: flex; align-items: center; gap: 8px; height: 36px; margin: 9px 10px 5px 12px; padding: 0 4px 0 12px;
+  box-sizing: border-box; border-radius: 999px; border: 1px solid var(--cs-accent); background: var(--cs-dk-field); color: var(--cs-soft);
+}
+.cs-dk-search > svg{ flex: none; width: 16px; height: 16px; }
+.cs-dk-search-in{
+  flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; margin: 0; border: 0; outline: 0; background: transparent;
+  font: inherit; font-size: 16px; color: var(--cs-ink); -webkit-appearance: none; appearance: none;   /* 16px: iOS doesn't zoom the page */
+}
+.cs-dk-search-in::placeholder{ color: var(--cs-soft); opacity: .75; }
+.cs-dk-search-in::-webkit-search-cancel-button{ -webkit-appearance: none; }
+.cs-dk-search-x{ flex: none; height: 28px; padding: 0 12px; margin: 0; border: 0; border-radius: 999px; appearance: none; background: transparent; font-size: 13px; color: var(--cs-accent); cursor: pointer; }
+
+/* ── the wall: scrolls on its own, never drags the page ── */
+.cs-dk-scroll{
+  flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch; touch-action: pan-y; padding: 6px 12px 14px;
+}
+.cs-dk-scroll::-webkit-scrollbar{ width: 0; height: 0; }
+.cs-dk-stickers{ display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; }
+.cs-dk-st{
+  position: relative; aspect-ratio: 1; min-width: 0; display: grid; place-items: center; padding: 4px; margin: 0;
+  appearance: none; border: 0; background: transparent; border-radius: var(--cs-dk-r); cursor: pointer;
+  -webkit-touch-callout: none; transition: background-color .16s ease, scale .12s ease;
+}
+.cs-dk-st img{ width: 100%; height: 100%; object-fit: contain; pointer-events: none; -webkit-touch-callout: none; }
+.cs-dk-st:active{ scale: .92; }
+.cs-dk-add{ border: 1px dashed var(--cs-accent); background: var(--cs-dk-card); color: var(--cs-accent); }
+.cs-dk-add svg{ width: 24px; height: 24px; }
+.cs-dk-st[data-combo]::after{   /* the running count on the cell being tapped */
+  content: attr(data-combo); position: absolute; top: 0; right: 0; padding: 1px 6px; border-radius: 999px;
+  font: 700 11px/1.35 ui-rounded, "SF Pro Rounded", system-ui, sans-serif; color: var(--cs-accent-ink); background: var(--cs-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .18); pointer-events: none;
+}
+.cs-dk-st:focus-visible, .cs-dk-kao:focus-visible, .cs-dk-g:focus-visible{ outline: 2px solid var(--cs-accent); outline-offset: -2px; }
+/* kaomoji: wrap, each as wide as its text, the rest of a line shared out */
+.cs-dk-kaomoji{ display: flex; flex-wrap: wrap; gap: 6px; }
+.cs-dk-kao{
+  flex: 1 1 auto; min-width: 0; max-width: 100%; min-height: 38px; padding: 7px 10px; margin: 0; appearance: none;
+  border: 1px solid var(--cs-line); border-radius: var(--cs-dk-r); background: var(--cs-dk-card);
+  font-size: 14px; line-height: 1.3; color: var(--cs-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer; -webkit-touch-callout: none; transition: background-color .16s ease, scale .12s ease;
+}
+.cs-dk-kao:active{ scale: .95; }
+.cs-dk-kao-add{ flex: 0 0 auto; border-style: dashed; border-color: var(--cs-accent); color: var(--cs-accent); font-size: 13px; }
+.cs-dk-hit{ animation: csDkHit .22s cubic-bezier(.2, .9, .3, 1.4); }
+@keyframes csDkHit{ 0%{ scale: .84; } 60%{ scale: 1.08; } 100%{ scale: 1; } }
+.cs-dk-note{ margin: 14px 4px 0; font-size: 12px; color: var(--cs-soft); text-align: center; }
+@media (hover: hover) and (pointer: fine){
+  .cs-dk-st:hover, .cs-dk-kao:hover, .cs-dk-tool:hover{ background-color: var(--cs-press); }
+}
+
+/* ── the pending ×N pill (bottom right): tap = send now, × = drop it; the bar runs down the wait ── */
+.cs-dk-combo{ position: absolute; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 3; display: flex; align-items: center; gap: 6px; }
+.cs-dk-combo button{ appearance: none; margin: 0; cursor: pointer; }
+.cs-dk-combo-go{
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px 0 4px;
+  border-radius: 999px; color: var(--cs-accent); background: var(--cs-paper); border: 1px solid var(--cs-line);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .12); animation: csDkComboIn .18s ease-out;
+}
+.cs-dk-combo-go img{ width: 28px; height: 28px; object-fit: contain; pointer-events: none; }
+.cs-dk-combo-n{ font: 800 15px/1 ui-rounded, "SF Pro Rounded", system-ui, sans-serif; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+.cs-dk-combo-bar{ position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: currentColor; opacity: .55; transform-origin: 0 50%; }
+.cs-dk-combo-bar.run{ animation: csDkComboBar var(--cs-dk-repeat, 3s) linear forwards; }
+.cs-dk-combo-x{
+  width: 26px; height: 26px; padding: 0; border-radius: 50%; display: grid; place-items: center;
+  color: var(--cs-soft); background: var(--cs-paper); border: 1px solid var(--cs-line);
+}
+.cs-dk-combo-x svg{ width: 14px; height: 14px; }
+@keyframes csDkComboBar{ from{ transform: scaleX(1); } to{ transform: scaleX(0); } }
+@keyframes csDkComboIn{ from{ opacity: 0; transform: translateY(-4px) scale(.94); } to{ opacity: 1; transform: none; } }
+
+/* ── long-press sheet (covers only the panel) ── */
+.cs-dk-scrim{ position: absolute; inset: 0; z-index: 5; background: var(--cs-scrim); opacity: 0; transition: opacity .2s ease; }
+.cs-dk-scrim.cs-on{ opacity: 1; }
+.cs-dk-sheet{
+  position: absolute; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); z-index: 6;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 12px; box-sizing: border-box;
+  border-radius: var(--cs-dk-r-big); border: 1px solid var(--cs-line); background: var(--cs-dk-solid); box-shadow: var(--cs-shadow);
+  transform: translateY(calc(100% + 24px)); transition: transform .22s var(--cs-ease);
+}
+.cs-dk-sheet.cs-on{ transform: none; }
+.cs-dk-sheet-head{ display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; align-items: center; }
+.cs-dk-sheet-head img{ width: 52px; height: 52px; object-fit: contain; pointer-events: none; }
+.cs-dk-sheet-meta{ min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.cs-dk-sheet-meta b{ font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-dk-sheet-meta small{ font-size: 11.5px; line-height: 1.4; color: var(--cs-soft); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cs-dk-sheet-kao{ grid-template-columns: minmax(0, 1fr); }
+.cs-dk-sheet-kao b{ font-size: 20px; font-weight: 400; text-align: center; padding: 4px 0; overflow-wrap: anywhere; }
+.cs-dk-sheet-spam{ display: flex; align-items: center; gap: 6px; }
+.cs-dk-sheet-spam > span{ flex: none; font-size: 12px; color: var(--cs-soft); margin-right: 2px; }
+.cs-dk-chip{
+  flex: 1 1 0; min-width: 0; height: 32px; padding: 0; margin: 0; appearance: none; border: 1px solid var(--cs-line); border-radius: 999px;
+  background: var(--cs-dk-card); font: 700 13px/1 ui-rounded, "SF Pro Rounded", system-ui, sans-serif; color: var(--cs-accent);
+  font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.cs-dk-sheet-acts{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+
+.cs-dk-btn{
+  height: 36px; padding: 0 12px; margin: 0; appearance: none; border: 1px solid var(--cs-line); border-radius: var(--cs-dk-r);
+  background: var(--cs-dk-card); font-size: 14px; color: var(--cs-ink); white-space: nowrap; cursor: pointer;
+  transition: background-color .16s ease, color .16s ease, scale .12s ease;
+}
+.cs-dk-btn:active, .cs-dk-chip:active{ scale: .96; }
+.cs-dk-btn:disabled{ opacity: .55; }
+.cs-dk-danger{ color: var(--cs-danger); }
+.cs-dk-ghost{ background: transparent; color: var(--cs-soft); }
+.cs-dk-armed{ background: var(--cs-danger) !important; border-color: var(--cs-danger) !important; color: #fff !important; }
+.cs-dk-msg{ margin: 10px 2px 0; font-size: 12px; line-height: 1.45; color: var(--cs-danger); }
+.cs-dk-sheet .cs-dk-msg{ margin: 0; text-align: center; }
+
+/* ── sub-pages: upload · edit · manage groups (slide in from the right, still inside the panel) ── */
+.cs-dk-sub{
+  position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; background: var(--cs-dk-solid);
+  padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box;
+  transform: translateX(100%); transition: transform .24s var(--cs-ease);
+}
+.cs-dk-sub.cs-on{ transform: none; }
+.cs-dk-sub-head{
+  flex: none; display: grid; grid-template-columns: minmax(64px, auto) minmax(0, 1fr) minmax(64px, auto); align-items: center; gap: 6px;
+  height: 46px; padding: 0 10px 0 4px; border-bottom: 1px solid var(--cs-line);
+}
+.cs-dk-back{
+  justify-self: start; display: inline-flex; align-items: center; gap: 1px; height: 32px; padding: 0 8px 0 2px; margin: 0;
+  appearance: none; border: 0; background: transparent; font-size: 13px; color: var(--cs-accent); cursor: pointer;
+}
+.cs-dk-back svg{ width: 20px; height: 20px; }
+.cs-dk-sub-title{ text-align: center; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-dk-save{
+  justify-self: end; height: 30px; padding: 0 14px; margin: 0; appearance: none; border: 0; border-radius: 999px;
+  background: var(--cs-accent); font-size: 13px; font-weight: 600; color: var(--cs-accent-ink); white-space: nowrap; cursor: pointer;
+}
+.cs-dk-save:disabled{ opacity: .6; }
+.cs-dk-sub-body{
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  touch-action: pan-y; padding: 12px 14px 16px; box-sizing: border-box;
+}
+.cs-dk-sub-body::-webkit-scrollbar{ width: 0; height: 0; }
+.cs-dk-form-top{ display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; align-items: start; }
+.cs-dk-pick{
+  width: 92px; height: 92px; padding: 4px; margin: 0; box-sizing: border-box; display: grid; place-items: center; appearance: none;
+  border: 1px dashed var(--cs-accent); border-radius: var(--cs-dk-r-big); background: var(--cs-dk-card); color: var(--cs-accent); cursor: pointer; overflow: hidden;
+}
+.cs-dk-pick-static{ border-style: solid; border-color: var(--cs-line); cursor: default; }
+.cs-dk-pick img{ width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.cs-dk-pick-ph{ display: grid; justify-items: center; gap: 4px; }
+.cs-dk-pick-ph svg{ width: 26px; height: 26px; }
+.cs-dk-pick-ph small{ font-size: 11px; }
+.cs-dk-fields{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.cs-dk-field{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
+.cs-dk-field > span{ font-size: 11.5px; color: var(--cs-soft); letter-spacing: .02em; }
+.cs-dk-field > span small{ margin-left: 6px; font-size: 10.5px; opacity: .85; }
+.cs-dk-field-g{ margin-top: 12px; }
+.cs-dk-field input, .cs-dk-gadd-in, .cs-dk-gp-in{
+  width: 100%; min-width: 0; height: 36px; padding: 0 10px; margin: 0; box-sizing: border-box; border: 1px solid var(--cs-line);
+  border-radius: var(--cs-dk-r); background: var(--cs-dk-field); font: inherit; font-size: 16px; color: var(--cs-ink); outline: 0;
+  -webkit-appearance: none; appearance: none;
+}
+.cs-dk-field input:focus, .cs-dk-gadd-in:focus, .cs-dk-gp-in:focus, .cs-dk-gname:focus{ border-color: var(--cs-accent); }
+.cs-dk-field input::placeholder, .cs-dk-gadd-in::placeholder, .cs-dk-gp-in::placeholder{ color: var(--cs-soft); opacity: .7; }
+.cs-dk-form-kao .cs-dk-kao-in{ height: 44px; font-size: 20px; text-align: center; }
+.cs-dk-gpills{ display: flex; flex-wrap: wrap; gap: 6px; }
+.cs-dk-gp{
+  flex: none; height: 30px; padding: 0 12px; margin: 0; appearance: none; border: 1px solid var(--cs-line); border-radius: 999px;
+  background: var(--cs-dk-card); font-size: 12.5px; line-height: 1; color: var(--cs-ink); white-space: nowrap; cursor: pointer;
+  transition: background-color .14s ease, color .14s ease, border-color .14s ease;
+}
+.cs-dk-gp[aria-pressed="true"]{ background: var(--cs-accent); border-color: var(--cs-accent); color: var(--cs-accent-ink); }
+.cs-dk-gp-new[aria-pressed="true"]{ border-style: dashed; border-color: var(--cs-accent-ink); }
+.cs-dk-gp-plus{ border-style: dashed; border-color: var(--cs-accent); color: var(--cs-accent); background: transparent; }
+.cs-dk-gp-addbox{ display: inline-flex; gap: 4px; align-items: center; }
+.cs-dk-gp-addbox .cs-dk-gp-in{ width: 128px; height: 30px; border-radius: 999px; padding: 0 10px; }
+.cs-dk-hint{ margin: 0 0 10px; font-size: 12px; line-height: 1.5; color: var(--cs-soft); }
+.cs-dk-hint-c{ text-align: center; margin-top: 10px; }
+.cs-dk-glist{ list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.cs-dk-grow{
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 30px 30px 34px; align-items: center; gap: 4px; padding: 3px 4px 3px 3px;
+  border: 1px solid var(--cs-line); border-radius: var(--cs-dk-r); background: var(--cs-dk-card);
+}
+.cs-dk-gname{
+  width: 100%; min-width: 0; height: 34px; padding: 0 8px; margin: 0; box-sizing: border-box; border: 1px solid transparent;
+  border-radius: calc(var(--cs-dk-r) - 3px); background: transparent; font: inherit; font-size: 16px; color: var(--cs-ink); outline: 0;
+  -webkit-appearance: none; appearance: none;
+}
+.cs-dk-grow small{ font-size: 11px; color: var(--cs-soft); white-space: nowrap; padding: 0 4px; }
+.cs-dk-ib{
+  width: 30px; height: 30px; padding: 0; margin: 0; display: grid; place-items: center; appearance: none; border: 0; border-radius: 50%;
+  background: transparent; font-size: 11px; color: var(--cs-accent); cursor: pointer;
+}
+.cs-dk-ib svg{ width: 17px; height: 17px; pointer-events: none; }
+.cs-dk-ib:disabled{ opacity: .28; cursor: default; }
+.cs-dk-ib-del{ width: 34px; color: var(--cs-danger); }
+.cs-dk-ib-del.cs-dk-armed{ border-radius: 999px; font-weight: 600; }
+.cs-dk-gadd{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 12px; }
+
+/* little note (saved / deleted) */
+.cs-dk-toast{
+  position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 9; max-width: calc(100% - 40px);
+  padding: 7px 14px; border-radius: 999px; background: var(--cs-ink); color: var(--cs-paper); font-size: 12.5px; line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+  opacity: 0; transform: translate(-50%, 6px); transition: opacity .18s ease, transform .18s ease;
+}
+.cs-dk-toast.cs-on{ opacity: .92; transform: translate(-50%, 0); }
+
+@media (prefers-reduced-motion: reduce){
+  .cs-deck, .cs-dk-sub, .cs-dk-sheet, .cs-dk-scrim, .cs-dk-toast{ transition: none; }
+  .cs-dk-hit, .cs-dk-combo-go{ animation: none; }
+  .cs-dk-st:active, .cs-dk-kao:active, .cs-dk-btn:active, .cs-dk-chip:active, .cs-dk-tool:active, .cs-dk-g:active{ scale: 1; }
+}
