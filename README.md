@@ -161,6 +161,7 @@ python3 packages/stickers/sticker.py add ~/Downloads/dizzy.png 兔子晕倒 "转
 python3 packages/stickers/sticker.py list 兔
 python3 packages/stickers/sticker.py edit 兔子晕倒 --name 晕倒兔 --desc "新描述" --groups 兔子
 python3 packages/stickers/sticker.py rm 晕倒兔
+python3 packages/stickers/sticker.py thumb --all          # 把图统一缩到长边 320（add 时自动缩；--max 改尺寸；要 Pillow）
 python3 packages/stickers/serve.py 8765    # 最小服务：列表 / 出图 / 增改删
 ```
 
