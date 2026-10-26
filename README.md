@@ -1,12 +1,12 @@
 # cute-chat-stickers
 
-给聊天页加三样「贴」——贴背景 emoji、长按给气泡贴表情、自己的表情包库和颜文字（一个抽屉两个 tab）。
+给聊天页加三样「贴」——贴背景 emoji、长按给气泡贴表情、自己的表情包库和颜文字（一块像键盘一样停在输入框下面的面板，贴纸和颜文字两页）。
 **长按落在哪，就往哪贴：** 按在空白处贴到聊天背景上，按在气泡上贴到那条消息上，按在图片上贴到那张图上。
 零依赖，一个 `<script>` 接上就能用。
 
 *[English below](#english)*
 
-| 长按空白 → 背景 | 长按气泡 → 贴表情 | 抽屉 · 贴纸 tab | 抽屉 · 颜文字 tab |
+| 长按空白 → 背景 | 长按气泡 → 贴表情 | 面板 · 贴纸（连点攒成 ×N） | 面板 · 颜文字 |
 |---|---|---|---|
 | ![background](docs/shot-background.png) | ![reactions](docs/shot-reactions.png) | ![stickers](docs/shot-stickers.png) | ![kaomoji](docs/shot-kaomoji.png) |
 
@@ -19,7 +19,7 @@
 <script src="dist/chat-stickers.js"></script>
 ```
 
-**2. 你的聊天页只要长这样**：一个滚动的消息列表，每行带 `data-id`，气泡是 `.bubble`（选择器都能改）；输入框旁边放一颗按钮。
+**2. 你的聊天页只要长这样**：一个滚动的消息列表，每行带 `data-id`，气泡是 `.bubble`（选择器都能改）；输入框旁边放一颗按钮。外层是一列 flex（列表 `flex: 1`，下面是输入框），面板会插在输入框后面，升起来时列表跟着让位。
 
 ```html
 <div id="messages">
@@ -40,12 +40,11 @@ ChatStickers.init({
   others: [{ id: "b", name: "B", emoji: "🦊" }],
   api: "/chat-stickers",                        // 参考后端的前缀，见 server/
   headers: () => ({ "X-User": currentUserId }),  // 你的鉴权
-  // 一颗按钮、一个抽屉，顶上「贴纸 | 颜文字」切换，记住上次停在哪个 tab
-  panel: { button: "#drawerBtn", anchor: "#composer", input: "#input", send: (text) => sendMessage(text),
-           tabs: ["stickers", "kaomoji"], remember: true },
+  // 一颗按钮，面板停在输入框下面：「贴纸 | 颜文字」两页，连点同一张贴纸攒成 ×N 一起发
+  panel: { mode: "deck", button: "#drawerBtn", dock: "#composer", input: "#input", send: (text) => sendMessage(text) },
 });
-// 渲染消息时把 [[sticker:名字]] 换成图：
-StickerRender.into(bubbleEl, message.text);
+// 渲染消息时把 [[sticker:名字]]（和 [[sticker:名字]]×N）换成图；刚收到的 ×N 让它一张张冒出来：
+StickerRender.into(bubbleEl, message.text, { key: message.id, play: justArrived, after: bubbleEl, follow: listEl });
 ```
 
 后端二选一：`server/fastapi_example.py`（全部接口：背景状态、贴表情、表情包、颜文字、分组、颜文字导入、SSE），或 `packages/stickers/serve.py`（只有表情包＋颜文字，纯标准库）。接口契约见 [`server/PROTOCOL.md`](server/PROTOCOL.md)，鉴权由你决定。
@@ -80,7 +79,7 @@ StickerRender.into(bubbleEl, message.text);
 | `lang` | 跟浏览器 | `"zh"` / `"en"`，文案都能用 `labels` 覆盖 |
 | `background` | `{}` | 传给 `EmojiBg.init` 的额外选项 ↓ |
 | `reactions` | `{}` | 传给 `Reactions.init` 的额外选项 ↓ |
-| `panel` | `null` | 一个抽屉两个 tab ↓；不给就退回「每个抽屉一颗按钮」的老写法 |
+| `panel` | `null` | 表情面板 ↓：`mode: "deck"` 停在输入框下面（推荐）；不写 `mode` 是浮在输入框上方的抽屉（老样子）；整个不给就退回「每个抽屉一颗按钮」 |
 | `stickers` / `kaomoji` | `{}` | 传给 `StickerPanel.init` / `KaomojiBox.init` 的额外选项（`store`、`seedUrl`…）↓；设 `false` 去掉那个 tab |
 
 `EmojiBg`（聊天背景）
@@ -99,7 +98,7 @@ StickerRender.into(bubbleEl, message.text);
 
 `Reactions`（气泡贴表情）：`emojis`（前七格）、`more`（第八格 ＋）、`getId(el)`、`canReact(el, id)`、`actions`（格子下面加几行自己的菜单，图标请用 SVG）、`bubbleOf(id)`、`store: { react, subscribe }`。`Reactions.paint(bubble, values)` 画角标。
 
-`panel`（`ChatStickers.panel`，一个抽屉两个 tab）：`button`（唯一的入口）、`anchor`、`input`、`send(text)`、`tabs`（默认 `["stickers", "kaomoji"]`，只要一个就只写一个）、`remember`（默认 `true`，上次停在哪个 tab 存在 localStorage）、`labels`（tab 名字）。顶上是分段切换（线条 SVG ＋ 字，颜色走 `--cs-*` 变量），下面各是一整套抽屉。
+`panel` 不写 `mode`（`ChatStickers.panel`，浮动抽屉，一个抽屉两个 tab）：`button`（唯一的入口）、`anchor`、`input`、`send(text)`、`tabs`（默认 `["stickers", "kaomoji"]`，只要一个就只写一个）、`remember`（默认 `true`，上次停在哪个 tab 存在 localStorage）、`labels`（tab 名字）。顶上是分段切换（线条 SVG ＋ 字，颜色走 `--cs-*` 变量），下面各是一整套抽屉。
 
 `StickerPanel`（贴纸 tab）：`input`、`send(text)`、`api` 或 `store`。点一张＝发送（输入框里已经有字就插到光标处）。
 
@@ -107,17 +106,65 @@ StickerRender.into(bubbleEl, message.text);
 
 老写法还在：不传 `panel`，改给 `stickers.button` / `kaomoji.button`，就是两颗按钮各开各的抽屉。
 
+## 停靠面板（`panel.mode: "deck"`）
+
+<img src="docs/shot-spam.png" alt="长按一张：刷屏 ×5 ×20 ×50 ×100 · 修改 · 删除；上面是刚刷出来的一串" width="260" align="right">
+
+`packages/core/deck.js`（`ChatStickers.deck(options)`，`ChatStickers.init` 里写 `panel: { mode: "deck", … }` 就是它）。像手机键盘一样从输入框下面升起，界面全在这一块里，不再弹浮层：
+
+- **顶上一排**：贴纸 | 颜文字 · 分组药丸（全部 / ♡ 最近 / 各分组 / 未分组，带分组第一张图当小图标，横着滑）· 🔍 搜索 · 整理分组。
+- **墙**：最新的在前（按 `id` 倒排），第一格「＋」上传一张 / 加一条颜文字。
+- **点贴纸面板不收**。连点同一张先攒着，格子角上和右下角小药丸显示 ×N，药丸底下的细条在倒计时；`repeat` 毫秒（默认 3 秒）没有新的就发成一条 `[[sticker:名字]]×N`（只点一下就是 `[[sticker:名字]]`）。点药丸＝马上发，点 × ＝不发了；换一张会先把攒着的发掉；收面板、切到颜文字、切走页面也会先发。输入框里已经有字时点一张＝插到光标处，不发也不攒。
+- **点颜文字**＝插到光标处，不发送，也不聚焦输入框（手机上不弹键盘）。
+- **长按 / 右键一格**：面板底部滑出菜单——贴纸有「刷屏 ×5 ×20 ×50 ×100」（`spam` 改张数，`[]` 去掉），以及修改、删除（点两下才删）、取消。
+- **上传 / 修改 / 整理分组**从右边滑进来盖住面板，「返回」「保存」在顶上；表单还是三样：图、名字、一句描述 ＋ 分组药丸（「＋ 新分组」原地起名，保存时才建）。整理分组：点名字直接改、↑↓ 排序、删除点两下。
+- 点输入框（键盘要上来了）、点面板外面、按 Esc 都会收起；Esc 先收菜单、再退子页、再收搜索。
+- 贴表情格子的「＋」在这个模式下也从面板里挑（`StickerDeck.pick(cb)`）。
+
+| 选项 | 默认 | 说明 |
+|---|---|---|
+| `button` | — | 唯一的入口按钮 |
+| `dock` | 按钮所在的 `<form>` | 面板插在它后面（`anchor` 也认）；找不到就固定在页面底部 |
+| `input` / `send(text)` | — | 输入框；发送函数（不给就只插进输入框） |
+| `container` | `init` 的 `container` | 消息列表：开关面板时原本贴着底就一路钉住 |
+| `tabs` / `remember` | `["stickers", "kaomoji"]` / `true` | 有哪几页；记住上次停在哪页、哪个分组 |
+| `order` | `"newest"` | `"newest"` 按 `id` 倒排，`"store"` 照 store 给的顺序 |
+| `repeat` / `maxRepeat` | `3000` / `999` | 连点攒多久再发；`0` ＝每点一下发一次 |
+| `spam` | `[5, 20, 50, 100]` | 长按菜单里的刷屏张数 |
+| `recent` | `{ stickers: 8, kaomoji: 24 }` | ♡ 最近记几个（存在 localStorage） |
+| `closeOnInputFocus` | `true` | 输入框一聚焦就收面板 |
+| `labels` | — | 覆盖任何一句文案 |
+
+返回 `{ open, close, toggle, isOpen, select(tab), flush, reload, pick(cb) }`；高度是 CSS 变量 `--cs-deck-h`（默认 `clamp(280px, 38vh, 340px)`），颜色全走 `--cs-*`。store 和浮动抽屉同一套（`StickerPanel.httpStore` / `localStore`、`KaomojiBox.httpStore` / `localStore`，或你自己的），**后端不用改**。颜文字的「从网页导入」目前只在浮动抽屉的「…」菜单里。
+
+### `[[sticker:名字]]×N`：刷屏
+
+`StickerRender` 认 tag 后面紧跟的 `×N`（`×` 也认 `x` / `X`，N 是 2–999）：画成一张图加 ×N 角标。`into()` 带上选项就能让它一张张冒出来——头几下慢、越来越快、偶尔停一下：
+
+```js
+StickerRender.into(bubbleEl, text, {
+  key: message.id,     // 记住刷到第几张：整条重画也从原处接着刷
+  play: justArrived,   // 刚发出 / 刚收到才开刷；历史消息叠成一张，点一下再刷
+  after: bubbleEl,     // 复制品排在气泡外面（不给就在气泡里、图下面）
+  end: isMine,         // 靠右排
+  follow: listEl,      // 列表贴着底的话跟着往下走
+});
+StickerRender.config({ maxCopies: 100 });   // 最多真冒几张（角标照写原数）
+```
+
+复制品放在一个 `.st-train` 里；消息行是 flex 的话给行 `flex-wrap: wrap`，它会占满一整行、排在气泡下面。`StickerRender.parseRun(text)` → `{ name, n }`，`StickerRender.run(name, n)` 拼出写法。
+
 ## 分组
 
 贴纸和颜文字用同一套分组。**只有分组，没有另外的标签**：一张图（一条颜文字）可以同时进好几个分组。
 
-<img src="docs/shot-edit.png" alt="修改一张：名字、一句描述、分组药丸，两颗亮着＝在两个组里" width="260" align="right">
+<img src="docs/shot-edit.png" alt="停靠面板里修改一张：图、名字、一句描述、分组药丸，亮着的＝在这个组里" width="260" align="right">
 
 - **表单只有三样**：名字、一句描述、分组（颜文字是颜文字本身 ＋ 分组）。修改时不自动聚焦任何输入框，手机上不弹键盘。
 - **分组是包自己画的药丸**，不用原生下拉：每个分组一颗，点一下进组（高亮），再点一下出组，可以同时亮好几颗；一颗都不亮＝未分组。最后一颗「＋ 新分组」原地变成输入框，回车就亮上了（保存时才真的建）。添加、修改、颜文字导入都用这一排。
-- **抽屉按分组分段**，按你排的顺序；进了几个组就在几段里各出现一次，「未分组」排最后。
+- **停靠面板用顶上的分组药丸切换**：全部 / ♡ 最近 / 各分组（按你排的顺序）/ 未分组，墙只换显示不重画。**浮动抽屉按分组分段**，进了几个组就在几段里各出现一次，「未分组」排最后。
 - **搜索**只看名字、一句描述、分组名（改过名的旧名字也算）。
-- **「…」→「管理分组」**：点名字改名、上下箭头排序、删除（只是把这个组从条目上摘掉，条目不会跟着删）、底下一行新建。
+- **管理分组**（停靠面板顶上那颗调节钮，浮动抽屉在「…」里）：点名字改名、上下箭头排序、删除（只是把这个组从条目上摘掉，条目不会跟着删）、底下一行新建。
 - **数据**：分组单独存一个有序数组 `groups: [{ id, name, order }]`，条目存 `groups: [分组 id, …]`（未分组是 `[]`）。旧数据读进来自动升级：以前单个的 `group`（id 或名字）和 `tags` 都并进 `groups`，标签没有同名分组就新建一个、排在已有分组后面；写回时不再有 `group` / `tags`。浏览器本地的 `localStore` 也一样迁移。
 - 接口：`GET/POST/PUT {api}/stickers/groups`、`PUT/DELETE {api}/stickers/groups/<id>`，颜文字是 `{api}/kaomoji/groups`，条目增改带 `groups`，见 PROTOCOL。命令行：`sticker.py groups [add 名字 | rename id 名字 | rm id | up id | down id]`，颜文字前面加 `kaomoji`；条目用 `--groups a,b`（`--group` 是它的别名，`--groups ""` 清空）。
 
@@ -168,9 +215,9 @@ python3 packages/stickers/sticker.py thumb --all          # 把图统一缩到�
 python3 packages/stickers/serve.py 8765    # 最小服务：列表 / 出图 / 增改删
 ```
 
-- 消息里写 `[[sticker:名字]]`（`[[表情:名字]]`、`[[sticker:12]]` 也认），`StickerRender` 把它换成图；整条只有一张图时气泡让位。
+- 消息里写 `[[sticker:名字]]`（`[[表情:名字]]`、`[[sticker:12]]` 也认），`StickerRender` 把它换成图；整条只有一张图时气泡让位。后面跟 `×N` 是同一张连发 N 次（见上面「刷屏」）。
 - 每张有稳定编号，删了不复用；**改名字时文件跟着改，旧名字留进 `aliases`**，历史消息里的旧名照样出图。
-- 抽屉顶栏 ＝ 搜索 ＋ 添加 ＋ 更多：「…」→「整理」或长按 / 右键某一格选中它，顶栏变成「修改 · 删除」。格子只管挑，不挂按钮。
+- 停靠面板里：长按 / 右键一格 → 底部菜单「刷屏 · 修改 · 删除」，第一格「＋」上传。浮动抽屉里：顶栏 ＝ 搜索 ＋ 添加 ＋ 更多，「…」→「整理」或长按 / 右键某一格选中它，顶栏变成「修改 · 删除」。格子只管挑，不挂按钮。
 - 「添加」＝从本机选一张图，填名字、一句描述，点亮它该进的分组。
 - 「修改」不自动聚焦任何输入框（手机上不弹键盘），多半只是来改分组的：点药丸进组 / 出组，保存 / 取消贴在抽屉底边。
 - `index.json` 的格式见 `packages/stickers/index.schema.json`。
@@ -191,7 +238,7 @@ python3 packages/stickers/serve.py 8765    # 最小服务：列表 / 出图 / �
 
 | 目录 | 内容 |
 |---|---|
-| `packages/core/` | `press.js` 长按三分法 · `drawer.js` 抽屉底座（增改删、搜索、表单、分组药丸、管理分组）· `panel.js` 一个抽屉两个 tab · `theme.css` 样式变量 · `index.js` 总入口 |
+| `packages/core/` | `press.js` 长按三分法 · `deck.js` / `deck.css` 停靠面板 · `drawer.js` 抽屉底座（增改删、搜索、表单、分组药丸、管理分组）· `panel.js` 浮动抽屉两个 tab · `theme.css` 样式变量 · `index.js` 总入口 |
 | `packages/emoji-bg/` | 聊天背景（`EmojiBg`） |
 | `packages/reactions/` | 长按贴表情格子（`Reactions`） |
 | `packages/stickers/` | 表情包：`sticker.py` CLI、`serve.py`、`render.js`、`panel.js`、示例库 |
@@ -200,7 +247,7 @@ python3 packages/stickers/serve.py 8765    # 最小服务：列表 / 出图 / �
 | `demo/` | 假对话页，四样都能试 |
 | `docs/` | 截图、GitHub Pages 落地页、分享卡片 |
 
-比如只要表情包：`core/theme.css` ＋ `core/drawer.css` ＋ `core/press.js` ＋ `core/drawer.js` ＋ `stickers/*`（再加 `core/panel.js` 就能用 `ChatStickers.panel({ tabs: ["stickers"] })`）。改了 `packages/` 后跑 `./build.sh` 重新拼 `dist/`。
+比如只要表情包：`core/theme.css` ＋ `core/drawer.css` ＋ `core/press.js` ＋ `core/drawer.js` ＋ `stickers/*`（再加 `core/deck.js` ＋ `core/deck.css` 就能用 `ChatStickers.deck({ tabs: ["stickers"] })`，或者加 `core/panel.js` 用浮动的 `ChatStickers.panel`）。改了 `packages/` 后跑 `./build.sh` 重新拼 `dist/`。
 
 ## 分享卡片（封面）
 
@@ -222,15 +269,15 @@ CC BY-NC-SA 4.0（署名 · 非商业 · 相同方式共享）。见 `LICENSE`�
 
 # cute-chat-stickers (English)
 
-Three ways to *stick* things in a chat page — emoji on the chat background, reactions on bubbles, and your own stickers and kaomoji (one drawer, two tabs).
+Three ways to *stick* things in a chat page — emoji on the chat background, reactions on bubbles, and your own stickers and kaomoji (one panel that docks under the composer like a keyboard, two tabs).
 **Long-press where you want it to stick:** empty space → the background, a bubble → that message, an image → that picture.
 Zero dependencies; one `<script>` and it works.
 
 ## Three steps
 
 1. Include `dist/chat-stickers.css` and `dist/chat-stickers.js`.
-2. Have a scrolling message list whose rows carry `data-id` and whose bubbles are `.bubble` (all selectors are configurable), and one button next to your input.
-3. Call `ChatStickers.init({ container, me, others, api, headers, panel: { button, anchor, input, send } })` and point `api` at a backend: `server/fastapi_example.py` (everything, with SSE) or `packages/stickers/serve.py` (stickers and kaomoji only, standard library). The contract is in [`server/PROTOCOL.md`](server/PROTOCOL.md); authentication is up to you.
+2. Have a scrolling message list whose rows carry `data-id` and whose bubbles are `.bubble` (all selectors are configurable), and one button next to your input. Lay the page out as a flex column (list `flex: 1`, then the composer): the panel goes in right after the composer and the list makes room when it opens.
+3. Call `ChatStickers.init({ container, me, others, api, headers, panel: { mode: "deck", button, dock, input, send } })` and point `api` at a backend: `server/fastapi_example.py` (everything, with SSE) or `packages/stickers/serve.py` (stickers and kaomoji only, standard library). The contract is in [`server/PROTOCOL.md`](server/PROTOCOL.md); authentication is up to you.
 
 Try it locally: run `python3 -m http.server` at the repo root, open `demo/index.html`, and `demo/index.html?me=b` in a second tab to play the other person (the tabs sync through BroadcastChannel).
 
@@ -249,10 +296,42 @@ Lessons from real phones are built in: touch events for timing (iOS cancels poin
 See the tables in the Chinese section above — option names are the same. The short version:
 `EmojiBg`: `cellSize` / `densityPerScreen`, `mix: {day, night}` (how far the page tints towards the emojis' average colour), `seed` (layout is deterministic, so two same-sized screens match), `isNight`, `enabled`, `adapter: {load, save, subscribe}`, `insertBefore`. `EmojiBg.notice({who, emoji, prev})` gives you the "B added 🦊 to the background · Add yours" line.
 `Reactions`: `emojis`, `more`, `getId`, `canReact`, `actions` (SVG icons only), `bubbleOf`, `store: {react, subscribe}`; `Reactions.paint(bubble, values)` draws the chips.
-`panel` (`ChatStickers.panel`, one drawer, two tabs): `button` (the only entry), `anchor`, `input`, `send(text)`, `tabs` (default `["stickers", "kaomoji"]`), `remember` (default `true`: the last tab is kept in localStorage), `labels`. A segmented switch (line SVG + text, `--cs-*` colours) sits on top; each tab is a full drawer.
+`panel` without `mode` (`ChatStickers.panel`, the floating drawer, two tabs): `button` (the only entry), `anchor`, `input`, `send(text)`, `tabs` (default `["stickers", "kaomoji"]`), `remember` (default `true`: the last tab is kept in localStorage), `labels`. A segmented switch (line SVG + text, `--cs-*` colours) sits on top; each tab is a full drawer.
 `StickerPanel` (stickers tab): `input`, `send(text)`, `api` or `store`. Tap sends (or inserts at the caret if you're mid-sentence).
 `KaomojiBox` (kaomoji tab): `input`, `api` or `store` / `seedUrl`. Tap inserts at the caret, never sends.
 The old way still works: leave `panel` out and give `stickers.button` / `kaomoji.button` for one drawer per button.
+
+## The docked panel (`panel.mode: "deck"`)
+
+`packages/core/deck.js` (`ChatStickers.deck(options)`; `ChatStickers.init` with `panel: { mode: "deck", … }` uses it). It rises from under the composer like a phone keyboard and everything happens inside it — no pop-ups:
+
+- **Top row**: Stickers | Kaomoji · group pills (All / ♡ Recent / each group / Ungrouped, scrolling sideways, each with its first sticker as an icon) · search · organize groups.
+- **The wall**: newest first (highest `id` first); the first cell, "+", uploads a picture or adds a kaomoji.
+- **Tapping a sticker keeps the panel open.** Tap the same one again and again and it counts up (×N on the cell and on a small pill at the bottom right, with a bar running down the wait); after `repeat` ms (3 s by default) with no new tap it is sent once as `[[sticker:name]]×N` (a single tap sends just `[[sticker:name]]`). Tap the pill to send now, × to drop it. Tapping another sticker, closing the panel, switching tabs or leaving the page sends the pending one first. If the input already has text, a tap inserts the tag at the caret instead.
+- **Tapping a kaomoji** inserts it at the caret, never sends, and never focuses the input (so phones don't raise the keyboard).
+- **Long-press / right-click a cell**: a sheet slides up inside the panel — spam ×5 ×20 ×50 ×100 for stickers (`spam` sets the counts, `[]` hides them), edit, delete (tap twice), cancel.
+- **Upload / edit / organize groups** slide in from the right over the panel, Back and Save at the top. The form is still picture, name, one line + group pills ("+ New group" names one in place; it is created on save). Organize: edit a name in place, ↑↓ to reorder, delete with two taps.
+- Focusing the input (the keyboard is coming), tapping outside, or Esc closes it; Esc closes the sheet, then the sub-page, then search first.
+- In this mode the reactions grid's "+" picks from the panel too (`StickerDeck.pick(cb)`).
+
+Options: `button`, `dock` (the panel goes right after it; `anchor` works too; default: the button's `<form>`; none found → fixed to the bottom of the page), `input`, `send(text)`, `container` (the message list, kept at the bottom while the panel moves; `init` passes its own), `tabs`, `remember` (last tab and group), `order` (`"newest"` | `"store"`), `repeat` (default `3000`; `0` sends every tap), `maxRepeat` (`999`), `spam` (`[5, 20, 50, 100]`), `recent` (`{ stickers: 8, kaomoji: 24 }`, kept in localStorage), `closeOnInputFocus` (`true`), `labels`. It returns `{ open, close, toggle, isOpen, select(tab), flush, reload, pick(cb) }`. Height is the CSS variable `--cs-deck-h` (default `clamp(280px, 38vh, 340px)`); colours are the `--cs-*` tokens. Stores are the floating drawer's (`StickerPanel.httpStore` / `localStore`, `KaomojiBox.httpStore` / `localStore`, or your own), so **the backend doesn't change**. Kaomoji web import is only in the floating drawer's "…" menu for now.
+
+### `[[sticker:name]]×N`: sticker spam
+
+`StickerRender` reads a `×N` right after a tag (`×`, `x` or `X`; N is 2–999) and draws one sticker with a ×N badge. Give `into()` options to let the copies pop out one by one — slow at first, then faster, the odd pause:
+
+```js
+StickerRender.into(bubbleEl, text, {
+  key: message.id,     // remembers how far it got, so re-rendering the message carries on
+  play: justArrived,   // only fresh messages play; older ones stay stacked until tapped
+  after: bubbleEl,     // copies go outside the bubble (default: inside it, under the sticker)
+  end: isMine,         // line them up on the right
+  follow: listEl,      // keep the list at the bottom if it was there
+});
+StickerRender.config({ maxCopies: 100 });   // how many really pop out (the badge keeps the full count)
+```
+
+The copies sit in a `.st-train`; if your rows are flex, give them `flex-wrap: wrap` and it takes a full line under the bubble. `StickerRender.parseRun(text)` → `{ name, n }`; `StickerRender.run(name, n)` writes the tag.
 
 ## Groups
 
@@ -264,7 +343,7 @@ Stickers and kaomoji share one group system, and **groups are the only way to so
 
 ## Sticker shelf
 
-`packages/stickers/sticker.py` (`add / list / edit / desc / rm`, folder from `--dir` or `$STICKER_DIR`) and `serve.py` (list, image, add, edit, delete). Write `[[sticker:name]]` in a message (`[[表情:name]]` and `[[sticker:12]]` work too). Numbers are stable and never reused; **renaming keeps the old name in `aliases`** so old messages still show the picture. Add = pick a picture on this device + name, description, groups. The drawer's top bar is search + add + more; "…" → Organize (or long-press / right-click a cell) turns it into Edit · Delete. Cells only pick. Put **your own pictures** in the library: the repo ships one sample sticker, `sample-bow.webp`. Stickers collected from the internet aren't yours to publish.
+`packages/stickers/sticker.py` (`add / list / edit / desc / rm`, folder from `--dir` or `$STICKER_DIR`) and `serve.py` (list, image, add, edit, delete). Write `[[sticker:name]]` in a message (`[[表情:name]]` and `[[sticker:12]]` work too; `[[sticker:name]]×N` is the same sticker N times). Numbers are stable and never reused; **renaming keeps the old name in `aliases`** so old messages still show the picture. Add = pick a picture on this device + name, description, groups. In the docked panel, long-press / right-click a cell for spam · edit · delete, and "+" uploads. In the floating drawer the top bar is search + add + more; "…" → Organize (or long-press / right-click a cell) turns it into Edit · Delete. Cells only pick. Put **your own pictures** in the library: the repo ships one sample sticker, `sample-bow.webp`. Stickers collected from the internet aren't yours to publish.
 
 ## Kaomoji
 
