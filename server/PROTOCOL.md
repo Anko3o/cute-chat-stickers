@@ -11,6 +11,23 @@ Everything the front end needs, under one base URL (`api` in `ChatStickers.init`
 
 ---
 
+## Message text · 消息里的记号
+
+Stickers travel inside ordinary message text; nothing here needs an endpoint.
+
+| | |
+|---|---|
+| `[[sticker:name]]` | one sticker (`[[表情:name]]` and `[[sticker:12]]` — an id — are read too; old names keep working through `aliases`) |
+| `[[sticker:name]]×N` | the same sticker N times ("sticker spam"); `×` may also be `x` / `X`, N is 2–999. The docked panel (`panel.mode: "deck"`) sends this when the same sticker is tapped repeatedly, and from the long-press sheet (×5 ×20 ×50 ×100). `StickerRender` draws it as one sticker with a ×N badge and can play the copies out one by one. `×0` / `×1` are left as text. |
+
+Store the text as it is. To show it to a model, the tag alone is enough (`[[sticker:name]]×5`, or "sent the sticker *name* five times") — no image needs to go along.
+
+消息正文里写 `[[sticker:名字]]`；后面跟 `×N`（N 为 2–999，`×` 也认 `x` / `X`）就是同一张连发 N 次。停靠面板里连点同一张、或者长按菜单里的「刷屏」都会发出这种写法；`StickerRender` 把它画成一张带 ×N 角标的图，可以一张张冒出来。原样存，不需要新接口。
+
+The docked panel uses only the endpoints below (list, add, edit, delete, groups). "Newest first" is done in the browser (highest `id` first) and "♡ Recent" lives in the browser's localStorage, so a server needs no changes for it.
+
+停靠面板只用下面已有的接口；「最新在前」是前端按 `id` 倒排，「♡ 最近」存在浏览器 localStorage 里，后端不用改。
+
 ## Events · 事件流
 
 `GET /events` — Server-Sent Events, one JSON object per `data:` line.

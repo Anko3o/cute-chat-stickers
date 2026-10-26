@@ -4,3 +4,23 @@
 .st-only{ background: transparent !important; border-color: transparent !important; box-shadow: none !important; padding: 0 !important; }
 .st-only .st-inline{ width: 128px; height: 128px; margin: 0; }
 .cd-stickers .cd-cell img{ filter: drop-shadow(0 1px 2px rgba(0,0,0,.06)); }
+
+/* sticker spam: [[sticker:name]]×N — stacked with a ×N badge until it plays; the copies line up under it */
+.st-spam{ display: block; position: relative; width: fit-content; }
+.st-spam:not(.st-on){ cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.st-spam:not(.st-on)::after{
+  content: "×" attr(data-n); position: absolute; right: -6px; bottom: -4px; padding: 2px 7px; border-radius: 999px;
+  font: 600 12px/1.4 ui-rounded, "SF Pro Rounded", system-ui, sans-serif; letter-spacing: .02em;
+  color: var(--cs-accent); background: var(--cs-paper); border: 1px solid var(--cs-line); box-shadow: 0 1px 4px rgba(0, 0, 0, .12);
+  pointer-events: none;
+}
+.st-spam .st-inline{ display: block; }
+.st-train{ display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 8px; flex-basis: 100%; min-width: 0; }
+.st-train.st-end{ align-items: flex-end; }
+.st-train:empty{ display: none; }
+.st-train > .st-copy{ display: block; margin: 0; }
+.st-train-only > .st-copy{ width: 128px; height: 128px; }
+.st-pop{ animation: stPop .24s cubic-bezier(.2, .9, .3, 1.3) both; transform-origin: 0 100%; }
+.st-end > .st-pop{ transform-origin: 100% 100%; }
+@keyframes stPop{ from{ opacity: 0; transform: translateY(10px) scale(.7); } to{ opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce){ .st-pop{ animation: none; } }
