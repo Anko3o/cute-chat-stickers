@@ -144,13 +144,16 @@ STICKER_DIR=~/my-stickers python3 packages/mcp/sticker_mcp.py
 
 | 工具 | 干什么 |
 |---|---|
-| `sticker_list(q?, group?)` | 翻库：编号 · 名字 · 一句描述 · 分组。开新对话先翻一遍 |
+| `sticker_list(q?, group?, sticker?)` | 一层一层翻：不带参数只报分组和张数，`group` 列那一组的编号和名字，`sticker` 看一张的描述；`q` 按词搜，整行给。开新对话先翻一下分组 |
 | `sticker_pick(sticker, caption?)` | 挑一张：回 `[[sticker:名字]]`（聊天页用，前端换成图）；配了 `STICKER_PUBLIC_BASE` 还回一行 markdown 图片（claude.ai / ChatGPT 这种带不了凭证的聊天窗用） |
 | `kaomoji_pick(group?, q?, n?)` | 从颜文字库按分组或关键词随机挑几条 |
 
 - 图从本服务的 `/img/<编号>.<扩展名>` 出：只认编号和登记过的扩展名，名字、目录、`index.json` 都摸不到。要给官方聊天窗看图，反代把 `https://你的域名/stickers/*` 指到它，再设 `STICKER_PUBLIC_BASE=https://你的域名/stickers`。
 - `STICKER_INLINE_IMAGE=1` 时 `sticker_pick` 还会把图作为 MCP image 内容块一起返回（支持的宿主直接显示；会进上下文、按图片计费，默认关，`STICKER_INLINE_MAX` 限大小）。
 - 工具说明和服务器 instructions 里写死了「一条消息最多一张」（`MCP_ONE_PER_MESSAGE=0` 去掉）。
+- 认 MCP Apps 卡片的宿主（连上时报了 `io.modelcontextprotocol/ui`，比如 claude.ai）：`sticker_pick` 改挂一张卡片（`packages/mcp/sticker_app.html`，就是一张 `<img>`，gif 照常动），回话只说「卡片已显示，别再贴图」，也不内嵌；没报过的宿主照旧拿标记和 markdown。宿主认不认记在会话号（`Mcp-Session-Id`）上，只放内存。`STICKER_CARD=0` 一概不挂。
+- `STICKER_ROUTE_SPLIT=1`：按来路只给一种。本机直连的（自家聊天页）只拿标记，经反代来的（带 `X-Forwarded-For`：官方聊天窗、云端 Claude Code）只拿 markdown。不分的话，认不出自己在哪的窗口会两行都贴，标记就成了一行字。默认不分。
+- `STICKER_SESSIONS_FILE=路径`：把会话号和「认不认卡片」记进这个文件。claude.ai 不会因为服务重启就重新握手，不记的话重启后要在那边刷新一次才又有卡片。默认只放内存。
 - `/mcp` 本身不鉴权。放到公网前请在反代加一层：Bearer 头，或者像长随机串路径这种「URL 即密码」的做法。
 
 ## 表情包库
@@ -257,7 +260,7 @@ Stickers and kaomoji share one group system, and **groups are the only way to so
 
 ## The AI half: MCP
 
-`packages/mcp/sticker_mcp.py` is the AI-side door to the drawer (stdlib only, Streamable HTTP, read-only, `127.0.0.1:18014` by default). Three tools: `sticker_list` (browse), `sticker_pick` (returns the `[[sticker:name]]` tag for your chat page, plus a markdown image line when `STICKER_PUBLIC_BASE` is set, for hosts like claude.ai that cannot send credentials with `<img>`), `kaomoji_pick` (random kaomoji by group or keyword). Images are served at `/img/<id>.<ext>` by id only. Put your own auth in front of `/mcp` before exposing it.
+`packages/mcp/sticker_mcp.py` is the AI-side door to the drawer (stdlib only, Streamable HTTP, read-only, `127.0.0.1:18014` by default). Three tools: `sticker_list` (browse in layers: groups first, `group` for the names in one group, `sticker` for one sticker's description, `q` to search), `sticker_pick` (returns the `[[sticker:name]]` tag for your chat page, plus a markdown image line when `STICKER_PUBLIC_BASE` is set, for hosts like claude.ai that cannot send credentials with `<img>`), `kaomoji_pick` (random kaomoji by group or keyword). Images are served at `/img/<id>.<ext>` by id only. Put your own auth in front of `/mcp` before exposing it. Hosts that support MCP Apps (they declare `io.modelcontextprotocol/ui` when they connect, e.g. claude.ai) get a card instead: `sticker_app.html` is just an `<img>`, so GIFs still move, and the tool tells the AI not to paste the picture again. Hosts that don't declare it keep the tag and the markdown line. `STICKER_CARD=0` turns cards off. `STICKER_ROUTE_SPLIT=1` gives each caller one line only: direct local callers (your chat page) get the tag, callers that come through a reverse proxy (`X-Forwarded-For` set: official chat apps, cloud Claude Code) get the markdown line. Off by default. `STICKER_SESSIONS_FILE` keeps sessions across restarts; claude.ai does not reconnect on its own when the server restarts.
 
 ## Sticker shelf
 
