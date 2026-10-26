@@ -1,5 +1,7 @@
 # cute-chat-stickers
 
+![sticker [ˈstɪk·ər] frontend + backend — a little picture you press onto a chat bubble](docs/og.png)
+
 给聊天页加三样「贴」——贴背景 emoji、长按给气泡贴表情、自己的表情包库和颜文字（一块像键盘一样停在输入框下面的面板，贴纸和颜文字两页）。
 **长按落在哪，就往哪贴：** 按在空白处贴到聊天背景上，按在气泡上贴到那条消息上，按在图片上贴到那张图上。
 零依赖，一个 `<script>` 接上就能用。
