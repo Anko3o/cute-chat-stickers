@@ -271,7 +271,7 @@
     open: function () { drawer && drawer.open(); },
     close: function () { drawer && drawer.close(); },
     reload: function () { return drawer && drawer.reload(); },
-    localStore: localStore, extract: extract, looksLikeKaomoji: looksLikeKaomoji, key: keyOf,
+    localStore: localStore, httpStore: httpStore, extract: extract, looksLikeKaomoji: looksLikeKaomoji, key: keyOf,
     drawer: function () { return drawer; },
   };
   global.KaomojiBox = api;

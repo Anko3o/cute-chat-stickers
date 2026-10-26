@@ -3,8 +3,8 @@
 set -e
 cd "$(dirname "$0")"
 JS="packages/core/press.js packages/core/drawer.js packages/emoji-bg/emoji-bg.js packages/reactions/reactions.js \
-    packages/stickers/render.js packages/stickers/panel.js packages/kaomoji/kaomoji.js packages/core/panel.js packages/core/index.js"
-CSS="packages/core/theme.css packages/core/drawer.css packages/emoji-bg/emoji-bg.css packages/reactions/reactions.css \
+    packages/stickers/render.js packages/stickers/panel.js packages/kaomoji/kaomoji.js packages/core/panel.js packages/core/deck.js packages/core/index.js"
+CSS="packages/core/theme.css packages/core/drawer.css packages/core/deck.css packages/emoji-bg/emoji-bg.css packages/reactions/reactions.css \
      packages/stickers/stickers.css packages/kaomoji/kaomoji.css"
 mkdir -p dist
 { echo "/*! chat-stickers — long-press where you want it to stick. Built from packages/ by build.sh. CC BY-NC-SA 4.0. */"
